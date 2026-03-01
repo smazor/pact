@@ -4,6 +4,11 @@
 
 Vincul is a multi-principal coordination protocol with explicit boundaries, cryptographic receipts, and fail-closed enforcement. It enables people, agents, and services to act together under shared constraints — where every decision is scoped, every action is auditable, and every receipt is verifiable.
 
+Vincul’s core innovation is structural:
+it places the **Coalition Contract at the root of authority**, not identity.
+Authority does not flow from who you are — it flows from what the coalition explicitly bounded and consented to.
+This makes bounded collective authority a first-class protocol primitive rather than a policy layered on top of identity.
+
 > *Coordination fails not because people are untrustworthy, but because the tools for establishing shared boundaries have been too expensive, too slow, or too opaque.* — [PHILOSOPHY.md](vincul-spec/PHILOSOPHY.md)
 
 ---
