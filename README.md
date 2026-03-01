@@ -23,32 +23,229 @@ Pact makes no claims about human character, legal enforceability, or economic ou
 
 ---
 
-## Quick Start
+## Installation
+
+### Core library only
+
+Install just the Pact Protocol core library (no server dependencies):
 
 ```bash
-# Clone and set up Python environment
-git clone <repo-url> && cd pact-repo
+git clone https://github.com/smazor/pact.git && cd pact
 python3 -m venv .venv && source .venv/bin/activate
-pip install setuptools wheel && pip install -e ".[server]" --no-build-isolation
-
-# Verify: run tests and CI hash vectors
-python3 -m unittest discover -s tests -p "test_*.py"    # 425 tests
-python3 ci/check_vectors.py                              # 13 vectors
-
-# Run the demo (production mode — single process)
-cd apps/web && npm install && npm run build && cd ../..
-uvicorn apps.server.main:app                             # → http://localhost:8000
+pip install -e .
 ```
 
-### Development mode (two terminals)
+This installs the `pact` package with its only dependency (`cryptography`).
+
+### With demo server
+
+To run the interactive demo, install with the `server` extra and build the frontend:
 
 ```bash
-# Terminal 1 — backend
-source .venv/bin/activate
-uvicorn apps.server.main:app --reload                    # API + WebSocket on :8000
+git clone https://github.com/smazor/pact.git && cd pact
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[server]"
 
-# Terminal 2 — frontend
-cd apps/web && npm run dev                               # Vite dev server on :5173
+# Build the frontend
+cd apps/web && npm install && npm run build && cd ../..
+```
+
+### Verify installation
+
+```bash
+source .venv/bin/activate
+python3 -m unittest discover -s tests -p "test_*.py"    # 425 tests
+python3 ci/check_vectors.py                              # 13 vectors
+```
+
+---
+
+## Usage
+
+### Creating a runtime
+
+`PactRuntime` is the main entry point. It wires all stores, validators, and evaluators together:
+
+```python
+from pact.runtime import PactRuntime
+from pact.contract import CoalitionContract
+from pact.scopes import Scope
+from pact.types import Domain, OperationType
+
+runtime = PactRuntime()
+```
+
+### Registering and activating a contract
+
+```python
+contract = CoalitionContract(
+    contract_id="c0000000-0000-0000-0000-000000000001",
+    version="0.2",
+    purpose={
+        "title": "Project Alpha",
+        "description": "Multi-team coordination contract",
+    },
+    principals=[
+        {"principal_id": "principal:alice", "role": "coordinator"},
+        {"principal_id": "principal:bob", "role": "member"},
+        {"principal_id": "principal:carol", "role": "member"},
+    ],
+    governance={
+        "decision_rule": "threshold",
+        "threshold": 2,
+        "amendment_rule": "unanimous",
+        "amendment_threshold": None,
+    },
+    budget_policy={
+        "allowed": True,
+        "dimensions": [
+            {"name": "USD", "unit": "currency", "ceiling": "10000"},
+        ],
+    },
+    activation={
+        "status": "draft",
+        "activated_at": None,
+        "expires_at": "2026-12-31T23:59:59Z",
+    },
+)
+
+# Register (validates structure, computes descriptor_hash)
+runtime.register_contract(contract)
+
+# Activate (draft → active)
+runtime.activate_contract(
+    contract_id=contract.contract_id,
+    activated_at="2026-03-01T00:00:00Z",
+    signatures=["principal:alice", "principal:bob", "principal:carol"],
+)
+```
+
+### Creating scopes and delegating authority
+
+```python
+# Root scope — full authority for the coordinator
+root_scope = Scope(
+    id="s0000000-0000-0000-0000-000000000001",
+    issued_by_scope_id=None,                    # root scope has no parent
+    issued_by=contract.contract_id,
+    issued_at="2026-03-01T00:00:00Z",
+    expires_at="2026-12-31T23:59:59Z",
+    domain=Domain(
+        namespace="project",
+        types=(OperationType.OBSERVE, OperationType.PROPOSE, OperationType.COMMIT),
+    ),
+    predicate="TOP",                            # no restrictions
+    ceiling="action.params.cost <= 10000",
+    delegate=True,                              # can create child scopes
+    revoke="principal_only",
+)
+runtime.scopes.add(root_scope)
+
+# Delegate a child scope to Bob — limited to project.engineering
+child_scope = Scope(
+    id="s0000000-0000-0000-0000-000000000002",
+    issued_by_scope_id=root_scope.id,           # parent pointer
+    issued_by="principal:alice",
+    issued_at="2026-03-01T00:01:00Z",
+    expires_at="2026-12-31T23:59:59Z",
+    domain=Domain(
+        namespace="project.engineering",        # narrower than parent
+        types=(OperationType.OBSERVE, OperationType.PROPOSE, OperationType.COMMIT),
+    ),
+    predicate="action.params.cost <= 5000",     # must be within ceiling
+    ceiling="action.params.cost <= 5000",       # tighter ceiling than parent
+    delegate=False,
+    revoke="principal_only",
+)
+
+receipt = runtime.delegate(
+    parent_scope_id=root_scope.id,
+    child=child_scope,
+    contract_id=contract.contract_id,
+    initiated_by="principal:alice",
+)
+print(receipt.receipt_kind)  # "delegation"
+print(receipt.receipt_hash)  # SHA-256 hash
+```
+
+### Executing actions through the enforcement pipeline
+
+```python
+# Bob commits an action — passes all 7 enforcement steps
+receipt = runtime.commit(
+    action={
+        "type": "COMMIT",
+        "namespace": "project.engineering",
+        "resource": "server:prod-deploy",
+        "params": {"cost": 2000},
+    },
+    scope_id=child_scope.id,
+    contract_id=contract.contract_id,
+    initiated_by="principal:bob",
+    budget_amounts={"USD": "2000"},
+)
+
+print(receipt.receipt_kind)  # "commitment"
+print(receipt.outcome)       # "success"
+```
+
+### Handling failures
+
+The enforcement pipeline is fail-closed. When any of the 7 steps fails, a failure receipt is emitted:
+
+```python
+# Bob tries to exceed the ceiling — fails at step 6
+receipt = runtime.commit(
+    action={
+        "type": "COMMIT",
+        "namespace": "project.engineering",
+        "resource": "server:premium-cluster",
+        "params": {"cost": 8000},      # exceeds ceiling of 5000
+    },
+    scope_id=child_scope.id,
+    contract_id=contract.contract_id,
+    initiated_by="principal:bob",
+    budget_amounts={"USD": "8000"},
+)
+
+print(receipt.receipt_kind)  # "failure"
+print(receipt.outcome)       # "denied"
+print(receipt.detail["error_code"])  # "SCOPE_EXCEEDED"
+```
+
+### Revoking scopes and dissolving contracts
+
+```python
+# Revoke Bob's scope (cascades to all descendants)
+receipt, result = runtime.revoke(
+    scope_id=child_scope.id,
+    contract_id=contract.contract_id,
+    initiated_by="principal:alice",
+)
+print(len(result.revoked_ids))  # number of scopes revoked
+
+# Dissolve the entire contract
+receipt = runtime.dissolve_contract(
+    contract_id=contract.contract_id,
+    dissolved_at="2026-06-01T00:00:00Z",
+    dissolved_by="principal:alice",
+    signatures=["principal:alice", "principal:bob"],  # meets threshold of 2
+)
+print(receipt.receipt_kind)  # "contract_dissolution"
+```
+
+### Querying the audit trail
+
+```python
+# All receipts in order
+for r in runtime.receipts.timeline():
+    print(f"{r.receipt_kind}: {r.outcome} by {r.initiated_by}")
+
+# Receipts for a specific scope
+scope_receipts = runtime.receipts.for_scope(child_scope.id)
+
+# Look up a receipt by hash
+receipt = runtime.receipts.get(receipt.receipt_hash)
 ```
 
 ---
@@ -136,7 +333,20 @@ Every action passes through these checks in locked order. First failure wins.
 
 ## The Demo
 
-The demo proves four assertions through an **8-friends-trip** scenario:
+The interactive demo proves four assertions through an **8-friends-trip to Italy** scenario.
+
+### Running the demo
+
+After [installing with server dependencies](#with-demo-server):
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=. uvicorn apps.server.main:app --port 8000
+```
+
+Open http://localhost:8000 in your browser. The demo UI shows stakeholder cards, scope popovers, receipt timeline, and animated agent message flows.
+
+Click through the 5 flows in order — each flow demonstrates a different protocol guarantee:
 
 | # | Flow | What happens | Assertion proved |
 |---|---|---|---|
@@ -145,6 +355,19 @@ The demo proves four assertions through an **8-friends-trip** scenario:
 | 3 | **Yaki's Personal Agent Tries Hotel Booking** | COMMIT on OBSERVE+PROPOSE scope → `TYPE_ESCALATION` | Scope enforcement works |
 | 4 | **Agents Vote to Widen Scope + Rebook** | 5/8 governance vote grants COMMIT → Yaki rebooks | Bounded delegation via governance |
 | 5 | **Dissolve Coalition** | Contract dissolved, all scopes revoked, actions fail | Revocation is real |
+
+### Development mode (two terminals)
+
+For frontend hot-reload during development:
+
+```bash
+# Terminal 1 — backend
+source .venv/bin/activate
+PYTHONPATH=. uvicorn apps.server.main:app --reload       # API + WebSocket on :8000
+
+# Terminal 2 — frontend
+cd apps/web && npm run dev                               # Vite dev server on :5173
+```
 
 ### API Endpoints
 
