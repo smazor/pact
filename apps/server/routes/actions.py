@@ -25,7 +25,7 @@ class ActionRequest(BaseModel):
 
 @router.post("/action")
 async def perform_action(req: ActionRequest):
-    """Execute an action through the Pact enforcement pipeline."""
+    """Execute an action through the Vincul enforcement pipeline."""
     if not demo_state.is_setup:
         raise HTTPException(status_code=400, detail="Contract not set up yet.")
 

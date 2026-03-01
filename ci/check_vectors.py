@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Pact Protocol — CI Vector Gate
+Vincul Protocol — CI Vector Gate
 ci/check_vectors.py
 
 The first check in CI. Must pass before any other test runs.
@@ -14,9 +14,9 @@ import hashlib
 import json
 import sys
 
-from pact.hashing import (
-    pact_hash,
-    pact_hash_constraint,
+from vincul.hashing import (
+    vincul_hash,
+    vincul_hash_constraint,
     normalize_contract,
     normalize_profile,
     normalize_ledger_balances,
@@ -128,24 +128,24 @@ def run() -> int:
             failures.append((name, EXPECTED[name], got))
 
     # Object hashes
-    scope_hash = pact_hash("scope", SCOPE)
+    scope_hash = vincul_hash("scope", SCOPE)
     check("scope", scope_hash)
 
     contract_norm = normalize_contract(CONTRACT)
-    contract_hash = pact_hash("contract", contract_norm)
+    contract_hash = vincul_hash("contract", contract_norm)
     check("contract_active", contract_hash)
 
     dissolved = json.loads(json.dumps(contract_norm))
     dissolved["activation"]["status"] = "dissolved"
     dissolved["activation"]["dissolved_at"] = "2025-01-01T02:00:00Z"
-    dissolved_hash = pact_hash("contract", dissolved)
+    dissolved_hash = vincul_hash("contract", dissolved)
     check("contract_dissolved", dissolved_hash)
 
-    check("constraint_TOP",  pact_hash_constraint("TOP"))
-    check("constraint_atom", pact_hash_constraint("action.params.duration_minutes <= 60"))
-    check("profile",         pact_hash("profile", normalize_profile(PROFILE)))
+    check("constraint_TOP",  vincul_hash_constraint("TOP"))
+    check("constraint_atom", vincul_hash_constraint("action.params.duration_minutes <= 60"))
+    check("profile",         vincul_hash("profile", normalize_profile(PROFILE)))
 
-    top_hash = pact_hash_constraint("TOP")
+    top_hash = vincul_hash_constraint("TOP")
 
     # delegation
     delegation = make_receipt(
@@ -162,7 +162,7 @@ def run() -> int:
          "revoke_granted": "principal_only", "expires_at": None,
          "ceiling_hash": top_hash},
     )
-    delegation_hash = pact_hash("receipt", delegation)
+    delegation_hash = vincul_hash("receipt", delegation)
     check("receipt_delegation", delegation_hash)
 
     # commitment
@@ -178,7 +178,7 @@ def run() -> int:
          "reversible": True, "revert_window": "PT10M",
          "external_ref": "ext:booking:abc123", "budget_consumed": None},
     )
-    commitment_hash = pact_hash("receipt", commitment)
+    commitment_hash = vincul_hash("receipt", commitment)
     check("receipt_commitment", commitment_hash)
 
     # attestation
@@ -201,7 +201,7 @@ def run() -> int:
          "produced_at": "2025-01-01T00:02:05Z"},
         prior_receipt=commitment_hash,
     )
-    check("receipt_attestation", pact_hash("receipt", attestation))
+    check("receipt_attestation", vincul_hash("receipt", attestation))
 
     # ledger_snapshot
     balances = normalize_ledger_balances([{
@@ -222,7 +222,7 @@ def run() -> int:
          "balances": balances, "prior_snapshot": None,
          "commitment_refs": ["00000000-0000-0000-0000-000000000005"]},
     )
-    check("receipt_ledger_snapshot", pact_hash("receipt", ledger))
+    check("receipt_ledger_snapshot", vincul_hash("receipt", ledger))
 
     # revocation
     revocation = make_receipt(
@@ -237,7 +237,7 @@ def run() -> int:
          "effective_at": "2025-01-01T01:00:00Z",
          "cascade_method": "root+proof", "revert_attempts": [], "non_revertable": []},
     )
-    revocation_hash = pact_hash("receipt", revocation)
+    revocation_hash = vincul_hash("receipt", revocation)
     check("receipt_revocation", revocation_hash)
 
     # contract_dissolution
@@ -256,7 +256,7 @@ def run() -> int:
          "decision_rule": "unanimous", "signatures_present": 2,
          "ledger_snapshot_hash": None},
     )
-    check("receipt_dissolution", pact_hash("receipt", dissolution))
+    check("receipt_dissolution", vincul_hash("receipt", dissolution))
 
     # failure
     failure = make_receipt(
@@ -278,13 +278,13 @@ def run() -> int:
          "revocation_receipt_hash": revocation_hash},
         prior_receipt=revocation_hash,
     )
-    check("receipt_failure", pact_hash("receipt", failure))
+    check("receipt_failure", vincul_hash("receipt", failure))
 
     # ── Report ────────────────────────────────────────────────
     total = len(EXPECTED)
     passed = total - len(failures)
 
-    print(f"\nPact CI Vector Gate")
+    print(f"\nVincul CI Vector Gate")
     print(f"{'=' * 50}")
     print(f"Protocol version: v0.2")
     print(f"Vectors checked:  {total}")

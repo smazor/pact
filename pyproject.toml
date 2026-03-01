@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pact-protocol"
+name = "vincul"
 version = "0.2.0"
-description = "Pact Protocol — bounded authority coordination infrastructure"
+description = "Vincul Protocol — bounded authority coordination infrastructure"
 requires-python = ">=3.11"
 dependencies = ["cryptography>=41.0"]
 

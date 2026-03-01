@@ -1,13 +1,13 @@
 """
-tests/test_hashing.py — pact.hashing test suite (unittest)
+tests/test_hashing.py — vincul.hashing test suite (unittest)
 """
 import math
 import unittest
 
-from pact.hashing import (
-    jcs_serialize, pact_hash, pact_hash_constraint,
+from vincul.hashing import (
+    jcs_serialize, vincul_hash, vincul_hash_constraint,
     normalize_contract, normalize_profile, normalize_ledger_balances,
-    attestation_signature_message, is_valid_pact_hash, DOMAIN_PREFIXES,
+    attestation_signature_message, is_valid_vincul_hash, DOMAIN_PREFIXES,
 )
 
 
@@ -84,7 +84,7 @@ class TestDomainPrefixes(unittest.TestCase):
 
     def test_unknown_type_raises(self):
         with self.assertRaises(ValueError):
-            pact_hash("bogus_type", {})
+            vincul_hash("bogus_type", {})
 
 
 SCOPE_FIXTURE = {
@@ -101,19 +101,19 @@ SCOPE_FIXTURE = {
 class TestKnownVectors(unittest.TestCase):
     def test_scope_hash(self):
         self.assertEqual(
-            pact_hash("scope", SCOPE_FIXTURE),
+            vincul_hash("scope", SCOPE_FIXTURE),
             "07992bbbbbc3e34126643faa78673b7e8db889ee9ff968c1f72d9e1625e7dba0"
         )
 
     def test_constraint_top(self):
         self.assertEqual(
-            pact_hash_constraint("TOP"),
+            vincul_hash_constraint("TOP"),
             "98047c362cd87227ccb70ff1635ba9fb68de6f3af390b5cf7b866af2ede53f44"
         )
 
     def test_constraint_atom(self):
         self.assertEqual(
-            pact_hash_constraint("action.params.duration_minutes <= 60"),
+            vincul_hash_constraint("action.params.duration_minutes <= 60"),
             "dd07ce67ec196e23cf6a5ba26ba54a7aab1b4dd484fe96d656bd774245a4563a"
         )
 
@@ -173,18 +173,18 @@ class TestNormalization(unittest.TestCase):
 class TestDeterminism(unittest.TestCase):
     def test_same_payload_same_hash(self):
         payload = {"a": 1, "b": [1, 2, 3], "c": None}
-        self.assertEqual(pact_hash("scope", payload), pact_hash("scope", payload))
+        self.assertEqual(vincul_hash("scope", payload), vincul_hash("scope", payload))
 
     def test_different_payloads_different_hashes(self):
-        self.assertNotEqual(pact_hash("scope", {"a": 1}), pact_hash("scope", {"a": 2}))
+        self.assertNotEqual(vincul_hash("scope", {"a": 1}), vincul_hash("scope", {"a": 2}))
 
     def test_different_domains_different_hashes(self):
         payload = {"a": 1}
-        self.assertNotEqual(pact_hash("scope", payload), pact_hash("receipt", payload))
+        self.assertNotEqual(vincul_hash("scope", payload), vincul_hash("receipt", payload))
 
     def test_key_order_irrelevant(self):
-        h1 = pact_hash("scope", {"a": 1, "b": 2})
-        h2 = pact_hash("scope", {"b": 2, "a": 1})
+        h1 = vincul_hash("scope", {"a": 1, "b": 2})
+        h2 = vincul_hash("scope", {"b": 2, "a": 1})
         self.assertEqual(h1, h2)
 
 
@@ -204,17 +204,17 @@ class TestAttestationMessage(unittest.TestCase):
 class TestHashValidation(unittest.TestCase):
     def test_valid_hash(self):
         h = "07992bbbbbc3e34126643faa78673b7e8db889ee9ff968c1f72d9e1625e7dba0"
-        self.assertTrue(is_valid_pact_hash(h))
+        self.assertTrue(is_valid_vincul_hash(h))
 
     def test_uppercase_invalid(self):
         h = "07992BBBBBC3E34126643FAA78673B7E8DB889EE9FF968C1F72D9E1625E7DBA0"
-        self.assertFalse(is_valid_pact_hash(h))
+        self.assertFalse(is_valid_vincul_hash(h))
 
     def test_too_short(self):
-        self.assertFalse(is_valid_pact_hash("abc123"))
+        self.assertFalse(is_valid_vincul_hash("abc123"))
 
     def test_none_invalid(self):
-        self.assertFalse(is_valid_pact_hash(None))  # type: ignore
+        self.assertFalse(is_valid_vincul_hash(None))  # type: ignore
 
 
 if __name__ == "__main__":

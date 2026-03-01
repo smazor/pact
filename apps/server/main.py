@@ -30,8 +30,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Pact Demo",
-    description="Demo backend for the Pact Protocol — 8-friends-trip scenario",
+    title="Vincul Demo",
+    description="Demo backend for the Vincul Protocol — 8-friends-trip scenario",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -69,7 +69,7 @@ else:
     @app.get("/")
     async def root():
         return {
-            "name": "Pact Demo",
+            "name": "Vincul Demo",
             "version": "0.1.0",
             "endpoints": [
                 "POST /contract/setup",

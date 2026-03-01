@@ -1,13 +1,13 @@
 """
-Tests for pact.runtime — Composition root integration tests
+Tests for vincul.runtime — Composition root integration tests
 """
 
 import unittest
 
-from pact.contract import CoalitionContract
-from pact.runtime import PactRuntime
-from pact.scopes import Scope
-from pact.types import (
+from vincul.contract import CoalitionContract
+from vincul.runtime import VinculRuntime
+from vincul.scopes import Scope
+from vincul.types import (
     ContractStatus, Domain, FailureCode, OperationType,
     ReceiptKind, ScopeStatus,
 )
@@ -92,9 +92,9 @@ def _make_child_scope(
     )
 
 
-def _setup_active_runtime() -> PactRuntime:
+def _setup_active_runtime() -> VinculRuntime:
     """Set up a runtime with an active contract and root scope."""
-    rt = PactRuntime()
+    rt = VinculRuntime()
     rt.register_contract(_make_contract(status="draft"))
     rt.activate_contract(
         CONTRACT_ID,
@@ -111,7 +111,7 @@ class TestRuntimeInit(unittest.TestCase):
     """Verify all stores are wired and validator is composed."""
 
     def test_stores_initialized(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
         self.assertIsNotNone(rt.contracts)
         self.assertIsNotNone(rt.scopes)
         self.assertIsNotNone(rt.receipts)
@@ -119,7 +119,7 @@ class TestRuntimeInit(unittest.TestCase):
         self.assertIsNotNone(rt.validator)
 
     def test_custom_depth(self):
-        rt = PactRuntime(max_delegation_depth=5)
+        rt = VinculRuntime(max_delegation_depth=5)
         self.assertEqual(rt.scopes._max_depth, 5)
 
 
@@ -128,14 +128,14 @@ class TestRuntimeInit(unittest.TestCase):
 class TestRegisterContract(unittest.TestCase):
 
     def test_register_seals_and_stores(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
         contract = _make_contract(status="draft")
         stored = rt.register_contract(contract)
         self.assertIsNotNone(stored.descriptor_hash)
         self.assertEqual(rt.contracts.get(CONTRACT_ID), stored)
 
     def test_register_duplicate_rejected(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         with self.assertRaises(ValueError):
             rt.register_contract(_make_contract(status="draft"))
@@ -146,7 +146,7 @@ class TestRegisterContract(unittest.TestCase):
 class TestActivateContract(unittest.TestCase):
 
     def test_activate_draft_to_active(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         before, after = rt.activate_contract(
             CONTRACT_ID,
@@ -157,7 +157,7 @@ class TestActivateContract(unittest.TestCase):
         self.assertTrue(after.is_active())
 
     def test_activate_governance_failure(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         with self.assertRaises(ValueError):
             rt.activate_contract(
@@ -167,7 +167,7 @@ class TestActivateContract(unittest.TestCase):
             )
 
     def test_activate_returns_different_hashes(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         before, after = rt.activate_contract(
             CONTRACT_ID,
@@ -182,7 +182,7 @@ class TestActivateContract(unittest.TestCase):
 class TestDissolveContract(unittest.TestCase):
 
     def test_dissolve_emits_receipt(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         rt.activate_contract(
             CONTRACT_ID,
@@ -199,7 +199,7 @@ class TestDissolveContract(unittest.TestCase):
         self.assertIsNotNone(receipt.receipt_hash)
 
     def test_dissolve_receipt_in_log(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         rt.activate_contract(
             CONTRACT_ID,
@@ -216,7 +216,7 @@ class TestDissolveContract(unittest.TestCase):
         self.assertEqual(rt.receipts.get(receipt.receipt_hash), receipt)
 
     def test_dissolve_receipt_hashes(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         _, active = rt.activate_contract(
             CONTRACT_ID,
@@ -235,7 +235,7 @@ class TestDissolveContract(unittest.TestCase):
         self.assertNotEqual(receipt.detail["contract_hash_after"], active_hash)
 
     def test_dissolve_governance_failure(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         rt.activate_contract(
             CONTRACT_ID,
@@ -278,7 +278,7 @@ class TestDelegate(unittest.TestCase):
 
     def test_delegation_type_escalation_emits_failure(self):
         """Child requests COMMIT but parent only has OBSERVE."""
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         rt.activate_contract(
             CONTRACT_ID,
@@ -318,7 +318,7 @@ class TestDelegate(unittest.TestCase):
             delegate=False,  # parent does NOT carry delegate
             revoke="principal_only",
         )
-        rt2 = PactRuntime()
+        rt2 = VinculRuntime()
         rt2.register_contract(_make_contract(status="draft"))
         rt2.activate_contract(
             CONTRACT_ID,
@@ -337,7 +337,7 @@ class TestDelegate(unittest.TestCase):
 
     def test_delegation_failure_does_not_add_scope(self):
         """On delegation failure, the child scope is NOT added."""
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         rt.activate_contract(
             CONTRACT_ID,
@@ -390,7 +390,7 @@ class TestCommit(unittest.TestCase):
 
     def test_commit_denied_emits_failure(self):
         """COMMIT on OBSERVE-only scope → TYPE_ESCALATION failure receipt."""
-        rt = PactRuntime()
+        rt = VinculRuntime()
         rt.register_contract(_make_contract(status="draft"))
         rt.activate_contract(
             CONTRACT_ID,
@@ -569,7 +569,7 @@ class TestEndToEnd(unittest.TestCase):
     """Full lifecycle: register → activate → delegate → commit → revoke → dissolve."""
 
     def test_full_lifecycle(self):
-        rt = PactRuntime()
+        rt = VinculRuntime()
 
         # 1. Register and activate contract
         rt.register_contract(_make_contract(status="draft"))
@@ -636,8 +636,8 @@ class TestDemoScenario(unittest.TestCase):
     Yaki attempts COMMIT → TYPE_ESCALATION failure receipt.
     """
 
-    def _setup_demo(self) -> PactRuntime:
-        rt = PactRuntime()
+    def _setup_demo(self) -> VinculRuntime:
+        rt = VinculRuntime()
 
         # Contract with 2 principals (simplified from 8 for test brevity)
         contract = CoalitionContract(

@@ -1,12 +1,12 @@
 """
-Tests for pact.budget — Budget ledger
+Tests for vincul.budget — Budget ledger
 """
 
 import unittest
 from decimal import Decimal
 
-from pact.budget import BudgetLedger
-from pact.types import FailureCode
+from vincul.budget import BudgetLedger
+from vincul.types import FailureCode
 
 
 SCOPE_A = "00000000-0000-0000-0000-00000000000a"
@@ -330,7 +330,7 @@ class TestProtocolConformance(unittest.TestCase):
     """Verify BudgetLedger satisfies BudgetLedgerProtocol."""
 
     def test_isinstance_check(self):
-        from pact.interfaces import BudgetLedgerProtocol
+        from vincul.interfaces import BudgetLedgerProtocol
         ledger = BudgetLedger()
         self.assertIsInstance(ledger, BudgetLedgerProtocol)
 

@@ -1,7 +1,7 @@
 """
 apps.server.demo_state — DemoState singleton
 
-Wires PactRuntime + fixture data for the 8-friends-trip scenario.
+Wires VinculRuntime + fixture data for the 8-friends-trip scenario.
 Deterministic: every reset() produces identical state.
 """
 
@@ -11,11 +11,11 @@ import uuid as uuid_mod
 from dataclasses import dataclass, field
 from typing import Any
 
-from pact.contract import CoalitionContract
-from pact.receipts import Receipt
-from pact.runtime import PactRuntime
-from pact.scopes import Scope
-from pact.types import Domain, OperationType, ReceiptKind
+from vincul.contract import CoalitionContract
+from vincul.receipts import Receipt
+from vincul.runtime import VinculRuntime
+from vincul.scopes import Scope
+from vincul.types import Domain, OperationType, ReceiptKind
 
 from connectors.flights import FlightsConnector
 from connectors.hotels import HotelsConnector
@@ -63,14 +63,14 @@ class VoteSession:
 
 class DemoState:
     """
-    Singleton demo state. Wraps PactRuntime + connectors + votes.
+    Singleton demo state. Wraps VinculRuntime + connectors + votes.
 
     Call setup_contract() after construction to initialize the
     8-friends-trip scenario.
     """
 
     def __init__(self) -> None:
-        self.runtime = PactRuntime()
+        self.runtime = VinculRuntime()
         self.connectors = {
             "flights": FlightsConnector(),
             "hotels": HotelsConnector(),

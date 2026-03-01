@@ -1,5 +1,5 @@
 """
-tests/test_constraints.py — pact.constraints test suite (unittest)
+tests/test_constraints.py — vincul.constraints test suite (unittest)
 
 Covers the v0.2 constraint DSL: parsing, evaluation, field resolution,
 subset checking, and ConstraintEvaluatorProtocol conformance.
@@ -7,13 +7,13 @@ subset checking, and ConstraintEvaluatorProtocol conformance.
 
 import unittest
 
-from pact.constraints import (
+from vincul.constraints import (
     Atom, ConstraintExpression, ConstraintEvaluator,
     parse, parse_atom, parse_literal,
     evaluate, resolve_field, is_subset,
     _MISSING,
 )
-from pact.types import FailureCode
+from vincul.types import FailureCode
 
 
 # ── Fixtures ──────────────────────────────────────────────────
@@ -451,7 +451,7 @@ class TestSubset(unittest.TestCase):
 class TestConstraintEvaluator(unittest.TestCase):
 
     def test_protocol_conformance(self):
-        from pact.interfaces import ConstraintEvaluatorProtocol
+        from vincul.interfaces import ConstraintEvaluatorProtocol
         evaluator = ConstraintEvaluator()
         self.assertIsInstance(evaluator, ConstraintEvaluatorProtocol)
 
@@ -475,16 +475,16 @@ class TestHashIntegration(unittest.TestCase):
     """Verify constraint hashing works with the same strings we parse."""
 
     def test_top_hash_matches_vector(self):
-        from pact.hashing import pact_hash_constraint
+        from vincul.hashing import vincul_hash_constraint
         self.assertEqual(
-            pact_hash_constraint("TOP"),
+            vincul_hash_constraint("TOP"),
             "98047c362cd87227ccb70ff1635ba9fb68de6f3af390b5cf7b866af2ede53f44",
         )
 
     def test_atom_hash_matches_vector(self):
-        from pact.hashing import pact_hash_constraint
+        from vincul.hashing import vincul_hash_constraint
         self.assertEqual(
-            pact_hash_constraint("action.params.duration_minutes <= 60"),
+            vincul_hash_constraint("action.params.duration_minutes <= 60"),
             "dd07ce67ec196e23cf6a5ba26ba54a7aab1b4dd484fe96d656bd774245a4563a",
         )
 

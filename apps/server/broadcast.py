@@ -4,7 +4,7 @@ apps.server.broadcast — Receipt → WebSocket event conversion.
 
 from __future__ import annotations
 
-from pact.receipts import Receipt
+from vincul.receipts import Receipt
 
 
 def receipt_to_event(receipt: Receipt, summary: str = "") -> dict:

@@ -1,14 +1,14 @@
-# Pact Protocol
+# Vincul Protocol
 
 **Bounded authority coordination infrastructure.**
 
-Pact is a protocol for multi-party coordination with explicit boundaries, cryptographic receipts, and fail-closed enforcement. It lets principals (people, agents, services) coordinate actions under shared constraints — where every decision is scoped, every action is auditable, and every receipt is verifiable.
+Vincul is a protocol for multi-party coordination with explicit boundaries, cryptographic receipts, and fail-closed enforcement. It lets principals (people, agents, services) coordinate actions under shared constraints — where every decision is scoped, every action is auditable, and every receipt is verifiable.
 
-> *Human coordination fails not because people are untrustworthy, but because the tools for establishing shared boundaries have been too expensive, too slow, or too opaque.* — [PHILOSOPHY.md](pact-spec/PHILOSOPHY.md)
+> *Human coordination fails not because people are untrustworthy, but because the tools for establishing shared boundaries have been too expensive, too slow, or too opaque.* — [PHILOSOPHY.md](vincul-spec/PHILOSOPHY.md)
 
 ---
 
-## What does Pact guarantee?
+## What does Vincul guarantee?
 
 | Guarantee | How |
 |---|---|
@@ -22,10 +22,10 @@ Pact is a protocol for multi-party coordination with explicit boundaries, crypto
 ## Project Structure
 
 ```
-src/pact/                        Core protocol library (11 modules)
+src/vincul/                        Core protocol library (11 modules)
 │
 ├── types.py                     Enums, Domain, ValidationResult — pure data
-├── hashing.py                   JCS canonicalization, pact_hash(), normalization
+├── hashing.py                   JCS canonicalization, vincul_hash(), normalization
 ├── identity.py                  Ed25519 sign/verify
 ├── interfaces.py                5 Protocol definitions (structural typing)
 │
@@ -36,12 +36,12 @@ src/pact/                        Core protocol library (11 modules)
 ├── budget.py                    BudgetLedger — Decimal arithmetic, per-scope ceilings
 │
 ├── validator.py                 7-step enforcement pipeline (imports only interfaces)
-└── runtime.py                   PactRuntime — composition root
+└── runtime.py                   VinculRuntime — composition root
 
 tests/                           425 unit tests across 8 files
 ci/check_vectors.py              13-vector CI gate (hash correctness)
 
-pact-spec/                       Protocol specification
+vincul-spec/                       Protocol specification
 ├── PHILOSOPHY.md                Protocol constitution
 ├── GLOSSARY.md                  Canonical vocabulary
 └── spec/                        12 normative spec documents
@@ -68,7 +68,7 @@ apps/
 
 ### Two-store model
 
-Pact separates state from audit:
+Vincul separates state from audit:
 
 - **ContractStore** — source of truth for contract state (draft → active → dissolved)
 - **ReceiptLog** — append-only audit trail (hash-verified, immutable once appended)
@@ -104,22 +104,22 @@ Every action passes through these checks in locked order. First failure wins.
 
 ### Core library only
 
-Install just the Pact Protocol core library (no server dependencies):
+Install just the Vincul Protocol core library (no server dependencies):
 
 ```bash
-git clone https://github.com/smazor/pact.git && cd pact
+git clone https://github.com/vincul-protocol/vincul.git && cd vincul
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 ```
 
-This installs the `pact` package with its only dependency (`cryptography`).
+This installs the `vincul` package with its only dependency (`cryptography`).
 
 ### With demo server
 
 To run the interactive demo, install with the `server` extra and build the frontend:
 
 ```bash
-git clone https://github.com/smazor/pact.git && cd pact
+git clone https://github.com/vincul-protocol/vincul.git && cd vincul
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[server]"
 
@@ -141,15 +141,15 @@ python3 ci/check_vectors.py                              # 13 vectors
 
 ### Creating a runtime
 
-`PactRuntime` is the main entry point. It wires all stores, validators, and evaluators together:
+`VinculRuntime` is the main entry point. It wires all stores, validators, and evaluators together:
 
 ```python
-from pact.runtime import PactRuntime
-from pact.contract import CoalitionContract
-from pact.scopes import Scope
-from pact.types import Domain, OperationType
+from vincul.runtime import VinculRuntime
+from vincul.contract import CoalitionContract
+from vincul.scopes import Scope
+from vincul.types import Domain, OperationType
 
-runtime = PactRuntime()
+runtime = VinculRuntime()
 ```
 
 ---
@@ -210,13 +210,13 @@ WS   /ws                      Real-time event broadcast
 
 ## Specification
 
-The full protocol specification lives in [`pact-spec/`](pact-spec/spec/README.md). Start with:
+The full protocol specification lives in [`vincul-spec/`](vincul-spec/spec/README.md). Start with:
 
-1. [`PHILOSOPHY.md`](pact-spec/PHILOSOPHY.md) — the protocol constitution
-2. [`GLOSSARY.md`](pact-spec/GLOSSARY.md) — canonical vocabulary
-3. [`spec/scope/SCHEMA.md`](pact-spec/spec/scope/SCHEMA.md) — scope structure and validity
-4. [`spec/receipts/RECEIPT.md`](pact-spec/spec/receipts/RECEIPT.md) — receipt envelope
-5. [`spec/crypto/HASHING.md`](pact-spec/spec/crypto/HASHING.md) — JCS canonicalization + 13 test vectors
+1. [`PHILOSOPHY.md`](vincul-spec/PHILOSOPHY.md) — the protocol constitution
+2. [`GLOSSARY.md`](vincul-spec/GLOSSARY.md) — canonical vocabulary
+3. [`spec/scope/SCHEMA.md`](vincul-spec/spec/scope/SCHEMA.md) — scope structure and validity
+4. [`spec/receipts/RECEIPT.md`](vincul-spec/spec/receipts/RECEIPT.md) — receipt envelope
+5. [`spec/crypto/HASHING.md`](vincul-spec/spec/crypto/HASHING.md) — JCS canonicalization + 13 test vectors
 
 **Protocol version: v0.2** — complete geometry, no open gaps.
 

@@ -1,5 +1,5 @@
 """
-tests/test_scopes.py — pact.scopes test suite (unittest)
+tests/test_scopes.py — vincul.scopes test suite (unittest)
 
 Covers every invariant in SCHEMA.md §9 and every locked invariant
 in SEMANTICS.md §9. Tests are organized to mirror the spec sections.
@@ -8,11 +8,11 @@ in SEMANTICS.md §9. Tests are organized to mirror the spec sections.
 import unittest
 from datetime import datetime, timezone, timedelta
 
-from pact.scopes import (
+from vincul.scopes import (
     Scope, ScopeStore, DelegationValidator,
     RevocationResult, check_scope_validity,
 )
-from pact.types import Domain, FailureCode, OperationType, ScopeStatus
+from vincul.types import Domain, FailureCode, OperationType, ScopeStatus
 
 
 # ── Fixtures ──────────────────────────────────────────────────

@@ -1,14 +1,14 @@
 """
-tests/test_receipts.py — pact.receipts test suite (unittest)
+tests/test_receipts.py — vincul.receipts test suite (unittest)
 """
 import unittest
 
-from pact.receipts import (
+from vincul.receipts import (
     Receipt, ReceiptLog,
     delegation_receipt, commitment_receipt,
     failure_receipt, revocation_receipt, dissolution_receipt,
 )
-from pact.types import FailureCode, ReceiptKind
+from vincul.types import FailureCode, ReceiptKind
 
 CONTRACT_ID = "00000000-0000-0000-0000-000000000003"
 CONTRACT_HASH = "ea160e58b091116a5ecc87211265a1dafa1ae2f7fbc62d4ece6b706b798a9a08"

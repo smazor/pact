@@ -1,5 +1,5 @@
 """
-Tests for pact.validator — Unified enforcement boundary
+Tests for vincul.validator — Unified enforcement boundary
 
 Tests compose concrete stores and pass them through the Validator,
 exercising the full 7-step enforcement pipeline.
@@ -8,14 +8,14 @@ exercising the full 7-step enforcement pipeline.
 import unittest
 from datetime import datetime, timezone
 
-from pact.budget import BudgetLedger
-from pact.constraints import ConstraintEvaluator
-from pact.contract import CoalitionContract, ContractStore
-from pact.scopes import Scope, ScopeStore
-from pact.types import (
+from vincul.budget import BudgetLedger
+from vincul.constraints import ConstraintEvaluator
+from vincul.contract import CoalitionContract, ContractStore
+from vincul.scopes import Scope, ScopeStore
+from vincul.types import (
     ContractStatus, Domain, FailureCode, OperationType, ScopeStatus,
 )
-from pact.validator import Validator
+from vincul.validator import Validator
 
 
 # ── Helpers ──────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 """
-tests/test_contract.py — pact.contract test suite (unittest)
+tests/test_contract.py — vincul.contract test suite (unittest)
 
 Covers COALITION.md invariants, lifecycle state machine, governance rules,
 hashing determinism, and ContractStoreProtocol conformance.
@@ -9,12 +9,12 @@ import json
 import unittest
 from datetime import datetime, timezone, timedelta
 
-from pact.contract import (
+from vincul.contract import (
     CoalitionContract, ContractStore,
     validate_contract, check_governance,
 )
-from pact.hashing import pact_hash, normalize_contract
-from pact.types import ContractStatus, DecisionRule
+from vincul.hashing import vincul_hash, normalize_contract
+from vincul.types import ContractStatus, DecisionRule
 
 
 # ── Fixtures ──────────────────────────────────────────────────
@@ -798,7 +798,7 @@ class TestContractStoreProtocol(unittest.TestCase):
     """Verify ContractStore satisfies ContractStoreProtocol."""
 
     def test_isinstance_check(self):
-        from pact.interfaces import ContractStoreProtocol
+        from vincul.interfaces import ContractStoreProtocol
         store = ContractStore()
         self.assertIsInstance(store, ContractStoreProtocol)
 

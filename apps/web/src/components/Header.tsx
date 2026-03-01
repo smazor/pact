@@ -18,7 +18,7 @@ export default function Header({ status, onReset }: Props) {
     <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
       <div className="flex items-center gap-4">
         <h1 className="text-xl font-bold text-white tracking-tight">
-          Pact Protocol Demo
+          Vincul Protocol Demo
         </h1>
         <span className="text-sm text-gray-400">8-Friends Trip to Italy</span>
       </div>
