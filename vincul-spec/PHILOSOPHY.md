@@ -115,7 +115,7 @@ Vincul asserts that the atomic unit of collective action is:
 **Intent + Authority + Result**
 
 This is not an invention.
-It is a formalization of how humans already coordinate.
+It is a formalization of how participants already coordinate.
 
 When collective action fails, it fails because:
 - Intent was unclear
@@ -252,7 +252,7 @@ Vincul makes no claims about human character.
 It makes precise claims about structure.
 
 Vincul does not guarantee:
-- That humans will behave ethically
+- That participants will behave ethically
 - That outcomes will be fair
 - That agreements are legally enforceable in all jurisdictions
 - That economic loss is impossible
