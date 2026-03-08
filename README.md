@@ -11,7 +11,7 @@ When an action is proposed, the Vincul validator enforces those boundaries deter
 
 This model makes coordination auditable, enforceable, and locally verifiable.
 
-> *Coordination fails not because people are untrustworthy, but because the tools for establishing shared boundaries have been too expensive, too slow, or too opaque.* — [PHILOSOPHY.md](vincul-spec/PHILOSOPHY.md)
+> *Most coordination fails silently — not because participants are malicious, but because shared intent has no standard form. Authority is assumed, not declared* — [PHILOSOPHY.md](vincul-spec/PHILOSOPHY.md)
 
 ---
 
