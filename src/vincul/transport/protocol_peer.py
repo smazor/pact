@@ -65,9 +65,17 @@ class ProtocolPeer:
         """Register and activate a contract in the local runtime."""
         self.runtime.register_contract(contract)
         principal_ids = contract.principal_ids()
+        activated_at = (
+            contract.activation.get("activated_at")
+            or contract.purpose.get("created_at")
+        )
+        if not activated_at:
+            raise ValueError(
+                f"Contract {contract.contract_id} has no activated_at or created_at timestamp"
+            )
         self.runtime.activate_contract(
             contract.contract_id,
-            contract.activation.get("activated_at", contract.purpose.get("created_at", "2025-01-01T00:00:00Z")),
+            activated_at,
             principal_ids,
         )
 

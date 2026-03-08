@@ -39,6 +39,7 @@ def _make_contract() -> CoalitionContract:
         purpose={
             "title": "Italy Trip Coalition",
             "description": "Raanan and Yaki plan a trip to Italy",
+            "created_at": "2025-01-01T00:00:00Z",
             "expires_at": None,
         },
         principals=[
@@ -358,6 +359,62 @@ class TestProtocolPeer(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.2)
 
             # Yaki should still have only 1 receipt (scope_hash mismatch)
+            self.assertEqual(len(yaki_receipts), 1)
+        finally:
+            await self._stop_peers()
+
+
+    # ── Test 5: Contract hash mismatch rejects receipt ────────
+
+    async def test_contract_hash_mismatch_rejects_receipt(self):
+        """
+        Manually send a receipt where contract_hash doesn't match Yaki's
+        local contract → Yaki's on_receipt handler is never called.
+        """
+        yaki_receipts: list[tuple[str, Receipt]] = []
+        self.yaki.on_receipt(lambda s, r: yaki_receipts.append((s, r)))
+
+        await self._connect_peers(19005)
+        try:
+            # Raanan commits a valid flight
+            flight_action = {
+                "type": "COMMIT",
+                "namespace": "travel.flights",
+                "resource": "flight-naples",
+                "params": {"destination": "Naples", "price": "450.00"},
+            }
+            receipt = await self.raanan.commit_action(
+                FLIGHT_SCOPE_ID, CONTRACT_ID, flight_action,
+                budget_amounts={"EUR": "450.00"},
+            )
+            self.assertEqual(receipt.outcome, "success")
+
+            await asyncio.sleep(0.2)
+            self.assertEqual(len(yaki_receipts), 1)
+
+            # Craft a receipt with a mismatched contract_hash
+            from vincul.receipts import commitment_receipt
+            tampered_receipt = commitment_receipt(
+                initiated_by="principal:raanan",
+                scope_id=FLIGHT_SCOPE_ID,
+                scope_hash=receipt.scope_hash,
+                contract_id=CONTRACT_ID,
+                contract_hash="c" * 64,  # fake contract hash
+                namespace="travel.flights",
+                resource="flight-milan",
+                params={"destination": "Milan", "price": "300.00"},
+                reversible=False,
+                revert_window=None,
+                external_ref=None,
+            )
+
+            payload = {"type": "receipt", "receipt": tampered_receipt.to_dict()}
+            sent = await self.raanan.peer.send("principal:yaki", payload)
+            self.assertTrue(sent)
+
+            await asyncio.sleep(0.2)
+
+            # Yaki should still have only 1 receipt (contract_hash mismatch)
             self.assertEqual(len(yaki_receipts), 1)
         finally:
             await self._stop_peers()

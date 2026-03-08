@@ -1,5 +1,5 @@
 # VinculNet — Transport Layer Specification
-`spec/transport/VINCULNET.md` · Stage 1
+`spec/transport/VINCULNET.md` · Stage 1 + Stage 2
 
 ---
 
