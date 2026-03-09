@@ -42,13 +42,18 @@ src/vincul/                        Core protocol library (11 modules)
 │
 ├── validator.py                 7-step enforcement pipeline (imports only interfaces)
 ├── runtime.py                   VinculRuntime — composition root
-└── transport/                   VinculNet peer-to-peer transport
-    ├── envelope.py              Signed message envelopes (Ed25519 + JCS)
-    ├── handshake.py             HELLO handshake for identity binding
-    ├── registry.py              In-memory peer registry
-    ├── peer.py                  VinculPeer — symmetric async WebSocket peer
-    ├── keys.py                  Key persistence (~/.vincul/keys/)
-    └── protocol_peer.py         ProtocolPeer — VinculPeer + VinculRuntime
+├── transport/                   VinculNet peer-to-peer transport
+│   ├── envelope.py              Signed message envelopes (Ed25519 + JCS)
+│   ├── handshake.py             HELLO handshake for identity binding
+│   ├── registry.py              In-memory peer registry
+│   ├── peer.py                  VinculPeer — symmetric async WebSocket peer
+│   ├── keys.py                  Key persistence (~/.vincul/keys/)
+│   └── protocol_peer.py         ProtocolPeer — VinculPeer + VinculRuntime
+│
+└── sdk/                         High-level SDK for building agents & tools
+    ├── context.py               VinculContext — one-stop coalition setup
+    ├── decorators.py            @vincul_tool, @tool_operation, ToolResult
+    └── agent.py                 @vincul_agent, @agent_action
 
 tests/                           467 unit tests across 10 files
 ci/check_vectors.py              13-vector CI gate (hash correctness)
@@ -126,6 +131,22 @@ pip install -e .
 
 This installs the `vincul` package with its only dependency (`cryptography`).
 
+### With samples
+
+Install the core library plus sample agents and tools:
+
+```bash
+git clone https://github.com/vincul-protocol/vincul.git && cd vincul
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[samples]"
+```
+
+Run the cross-vendor tool marketplace demo:
+
+```bash
+python -m samples.cross_vendor_tool_marketplace.demo
+```
+
 ### With demo server
 
 To run the interactive demo, install with the `server` extra and build the frontend:
@@ -137,6 +158,12 @@ pip install -e ".[server]"
 
 # Build the frontend
 cd apps/web && npm install && npm run build && cd ../..
+```
+
+### All extras
+
+```bash
+pip install -e ".[samples,server,dev]"
 ```
 
 ### Verify installation
