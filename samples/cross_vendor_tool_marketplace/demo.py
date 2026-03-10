@@ -2,7 +2,7 @@
 
 Built on vincul SDK high-level constructs:
   - VinculContext (one-stop coalition setup)
-  - @vincul_tool / @tool_operation (declarative tool definition)
+  - @vincul_tool / @vincul_tool_action (declarative tool definition)
   - VinculAgent (agent base with invoke())
   - ToolResult (unified return type)
 
@@ -259,8 +259,8 @@ def run_demo() -> None:
     print()
     print("  SDK constructs used:")
     print("    - VinculContext (one-stop coalition setup)")
-    print("    - @vincul_tool + @tool_operation (declarative tool definition)")
-    print("    - @vincul_agent + @agent_action (declarative agent definition)")
+    print("    - @vincul_tool + @vincul_tool_action (declarative tool definition)")
+    print("    - @vincul_agent + @vincul_agent_action (declarative agent definition)")
     print("    - ToolResult (unified return type)")
     print("    - Automatic: 7-step pipeline, receipts, attested results")
     print()

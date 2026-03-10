@@ -351,6 +351,12 @@ class TestReceiptFrozen(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             r.contract_id = "other"
 
+    def test_seal_twice_raises(self):
+        r = make_commitment()  # already sealed by builder
+        with self.assertRaises(RuntimeError) as ctx:
+            r.seal()
+        self.assertIn("already sealed", str(ctx.exception))
+
 
 class TestSerialization(unittest.TestCase):
     def test_round_trip(self):

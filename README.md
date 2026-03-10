@@ -52,8 +52,8 @@ src/vincul/                        Core protocol library (11 modules)
 │
 └── sdk/                         High-level SDK for building agents & tools
     ├── context.py               VinculContext — one-stop coalition setup
-    ├── decorators.py            @vincul_tool, @tool_operation, ToolResult
-    └── agent.py                 @vincul_agent, @agent_action
+    ├── decorators.py            @vincul_tool, @vincul_tool_action, ToolResult
+    └── agent.py                 @vincul_agent, @vincul_agent_action
 
 tests/                           467 unit tests across 10 files
 ci/check_vectors.py              13-vector CI gate (hash correctness)
@@ -223,12 +223,13 @@ Click through the 5 flows in order — each flow demonstrates a different protoc
 For frontend hot-reload during development:
 
 ```bash
-# Terminal 1 — backend
-source .venv/bin/activate
-PYTHONPATH=. uvicorn apps.server.main:app --reload       # API + WebSocket on :8000
+# Terminal 1 — backend (default port 8192, override with VINCUL_PORT)
+conda activate demo
+PYTHONPATH=. uvicorn apps.server.main:app --reload --port ${VINCUL_PORT:-8192}
 
-# Terminal 2 — frontend
-cd apps/web && npm run dev                               # Vite dev server on :5173
+# Terminal 2 — frontend (reads VINCUL_PORT for proxy target)
+conda activate demo
+cd apps/web && npm run dev                               # Vite dev server on :8199
 ```
 
 ### API Endpoints

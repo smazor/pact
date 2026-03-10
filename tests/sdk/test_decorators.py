@@ -1,12 +1,12 @@
 """
-tests/sdk/test_decorators.py — @vincul_tool, @tool_operation, ToolResult tests (unittest)
+tests/sdk/test_decorators.py — @vincul_tool, @vincul_tool_action, ToolResult tests (unittest)
 """
 import unittest
 
 from vincul.identity import KeyPair
 from vincul.runtime import VinculRuntime
 from vincul.sdk.context import VinculContext
-from vincul.sdk.decorators import ToolResult, tool_operation, vincul_tool
+from vincul.sdk.decorators import ToolResult, vincul_tool_action, vincul_tool
 from vincul.types import OperationType, ReceiptKind
 
 
@@ -24,13 +24,13 @@ class FakeTool:
         self.runtime = runtime
         self._call_count = 0
 
-    @tool_operation(action_type=OperationType.COMMIT, resource_key="item_id")
+    @vincul_tool_action(action_type=OperationType.COMMIT, resource_key="item_id")
     def place_order(self, *, item_id: str, quantity: int) -> dict:
         """Place a test order."""
         self._call_count += 1
         return {"order_id": f"ord-{self._call_count:04d}", "total": quantity * 10}
 
-    @tool_operation(action_type=OperationType.OBSERVE, side_effecting=False)
+    @vincul_tool_action(action_type=OperationType.OBSERVE, side_effecting=False)
     def get_status(self, *, order_id: str) -> dict:
         return {"order_id": order_id, "status": "shipped"}
 
@@ -142,7 +142,7 @@ class TestVinculToolDecorator(unittest.TestCase):
         self.assertEqual(tool._call_count, 0)
 
 
-# ── @tool_operation — success path ───────────────────────────
+# ── @vincul_tool_action — success path ───────────────────────────
 
 class TestToolOperationSuccess(unittest.TestCase):
     def test_success_result(self):
@@ -280,7 +280,7 @@ class TestToolOperationSuccess(unittest.TestCase):
         self.assertNotEqual(r1.receipt.receipt_hash, r2.receipt.receipt_hash)
 
 
-# ── @tool_operation — failure path ───────────────────────────
+# ── @vincul_tool_action — failure path ───────────────────────────
 
 class TestToolOperationFailure(unittest.TestCase):
     def test_ceiling_violated(self):
@@ -349,7 +349,7 @@ class TestToolOperationFailure(unittest.TestCase):
         self.assertIn("REVOKED", result.failure_code or "")
 
 
-# ── @tool_operation metadata ─────────────────────────────────
+# ── @vincul_tool_action metadata ─────────────────────────────────
 
 class TestToolOperationMeta(unittest.TestCase):
     def test_op_meta_on_method(self):

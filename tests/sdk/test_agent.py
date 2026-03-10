@@ -1,13 +1,13 @@
 """
-tests/sdk/test_agent.py — @vincul_agent and @agent_action tests (unittest)
+tests/sdk/test_agent.py — @vincul_agent and @vincul_agent_action tests (unittest)
 """
 import unittest
 
 from vincul.identity import KeyPair
 from vincul.runtime import VinculRuntime
-from vincul.sdk.agent import agent_action, vincul_agent
+from vincul.sdk.agent import vincul_agent_action, vincul_agent
 from vincul.sdk.context import VinculContext
-from vincul.sdk.decorators import ToolResult, tool_operation, vincul_tool
+from vincul.sdk.decorators import ToolResult, vincul_tool_action, vincul_tool
 from vincul.types import OperationType, ReceiptKind
 
 
@@ -24,22 +24,22 @@ class FakeTool:
         self.key_pair = key_pair
         self.runtime = runtime
 
-    @tool_operation(action_type=OperationType.COMMIT, resource_key="item_id")
+    @vincul_tool_action(action_type=OperationType.COMMIT, resource_key="item_id")
     def place_order(self, *, item_id: str, quantity: int) -> dict:
         return {"order_id": "ord-001", "total": quantity * 10}
 
-    @tool_operation(action_type=OperationType.COMMIT)
+    @vincul_tool_action(action_type=OperationType.COMMIT)
     def cancel_order(self, *, order_id: str) -> dict:
         return {"cancelled": order_id}
 
 
 @vincul_agent(agent_id=AGENT_ID)
 class FakeAgent:
-    @agent_action(operation="place_order")
+    @vincul_agent_action(operation="place_order")
     def buy(self, tool, *, item_id: str, quantity: int) -> ToolResult:
         """Buy through the tool."""
 
-    @agent_action
+    @vincul_agent_action
     def cancel_order(self, tool, *, order_id: str) -> ToolResult:
         """Cancel — operation defaults to method name."""
 
@@ -49,7 +49,7 @@ class AgentWithCustomInit:
     def __init__(self, *, label: str = "default"):
         self.label = label
 
-    @agent_action(operation="place_order")
+    @vincul_agent_action(operation="place_order")
     def buy(self, tool, *, item_id: str, quantity: int) -> ToolResult:
         """Buy through the tool."""
 
@@ -138,7 +138,7 @@ class TestAgentInvoke(unittest.TestCase):
         self.assertTrue(r2.success)
 
 
-# ── @agent_action — with explicit operation ──────────────────
+# ── @vincul_agent_action — with explicit operation ──────────────────
 
 class TestAgentActionExplicit(unittest.TestCase):
     def test_buy_routes_to_place_order(self):
@@ -164,7 +164,7 @@ class TestAgentActionExplicit(unittest.TestCase):
         self.assertEqual(meta["operation"], "place_order")
 
 
-# ── @agent_action — without parentheses (operation = method name) ──
+# ── @vincul_agent_action — without parentheses (operation = method name) ──
 
 class TestAgentActionImplicit(unittest.TestCase):
     def test_cancel_routes_to_cancel_order(self):
@@ -182,7 +182,7 @@ class TestAgentActionImplicit(unittest.TestCase):
 # ── Post-revocation ──────────────────────────────────────────
 
 class TestAgentPostRevocation(unittest.TestCase):
-    def test_agent_action_fails_after_revocation(self):
+    def test_vincul_agent_action_fails_after_revocation(self):
         ctx, contract, scopes, tool, agent = _setup()
         # Revoke mid scope, cascading to leaf
         ctx.revoke_scope(

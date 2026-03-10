@@ -7,11 +7,12 @@ scope chain construction in a few calls. Wraps VinculRuntime.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
 from vincul.contract import CoalitionContract
 from vincul.identity import KeyPair, PrincipalRegistry
-from vincul.receipts import new_uuid, now_utc
+from vincul.receipts import Receipt, activation_receipt, new_uuid, now_utc
 from vincul.runtime import VinculRuntime
 from vincul.scopes import Scope
 from vincul.types import Domain, OperationType
@@ -82,6 +83,7 @@ class VinculContext:
         purpose_description: str = "",
         expires_at: str = "2026-12-31T00:00:00Z",
         governance_rule: str = "unanimous",
+        governance: dict[str, Any] | None = None,
         budget_allowed: bool = False,
         budget_dimensions: list[dict] | None = None,
         signatories: list[str] | None = None,
@@ -89,8 +91,13 @@ class VinculContext:
         """Create, register, and activate a coalition contract.
 
         Uses all registered principals. Governance defaults to unanimous.
+        Pass ``governance`` dict to override the default governance structure.
         Returns the activated contract.
         """
+        gov = governance or {
+            "decision_rule": governance_rule,
+            "threshold": None,
+        }
         contract = CoalitionContract(
             contract_id=new_uuid(),
             version="0.2",
@@ -100,10 +107,7 @@ class VinculContext:
                 "expires_at": expires_at,
             },
             principals=list(self._principals),
-            governance={
-                "decision_rule": governance_rule,
-                "threshold": None,
-            },
+            governance=gov,
             budget_policy={
                 "allowed": budget_allowed,
                 "dimensions": budget_dimensions,
@@ -114,11 +118,25 @@ class VinculContext:
         contract = self.runtime.register_contract(contract)
 
         sigs = signatories or [p["principal_id"] for p in self._principals]
+        activated_at = now_utc()
         self.runtime.activate_contract(
             contract.contract_id,
-            activated_at=now_utc(),
+            activated_at=activated_at,
             signatures=sigs,
         )
+
+        # Emit activation receipt
+        receipt = activation_receipt(
+            initiated_by=sigs[0],
+            contract_id=contract.contract_id,
+            contract_hash=contract.descriptor_hash,
+            activated_at=activated_at,
+            decision_rule=contract.governance.get("decision_rule", "unanimous"),
+            signatures_present=len(sigs),
+            signatories=sigs,
+        )
+        self.runtime.receipts.append(receipt)
+
         return contract
 
     # ── Scope chain ───────────────────────────────────────────
@@ -186,7 +204,55 @@ class VinculContext:
 
         return scopes
 
-    # ── Revocation shortcut ───────────────────────────────────
+    # ── Scope management ─────────────────────────────────────
+
+    def add_scope(self, scope: Scope) -> Scope:
+        """Add a root scope (no parent) to the scope store."""
+        return self.runtime.scopes.add(scope)
+
+    def delegate_scope(
+        self,
+        *,
+        parent_scope_id: str,
+        child: Scope,
+        contract_id: str,
+        initiated_by: str,
+    ):
+        """Delegate a child scope from parent. Returns (receipt, child_scope)."""
+        receipt = self.runtime.delegate(
+            parent_scope_id=parent_scope_id,
+            child=child,
+            contract_id=contract_id,
+            initiated_by=initiated_by,
+        )
+        child_scope = self.runtime.scopes.get(child.id)
+        return receipt, child_scope
+
+    # ── Budget ─────────────────────────────────────────────────
+
+    def set_budget_ceiling(self, scope_id: str, dimension: str, amount: str) -> None:
+        """Set a budget ceiling for a scope dimension."""
+        self.runtime.budget.set_ceiling(scope_id, dimension, amount)
+
+    # ── Dissolution ────────────────────────────────────────────
+
+    def dissolve_contract(
+        self,
+        *,
+        contract_id: str,
+        dissolved_by: str,
+        signatures: list[str],
+        dissolved_at: str | None = None,
+    ):
+        """Dissolve a contract. Returns the dissolution receipt."""
+        return self.runtime.dissolve_contract(
+            contract_id=contract_id,
+            dissolved_at=dissolved_at or now_utc(),
+            dissolved_by=dissolved_by,
+            signatures=signatures,
+        )
+
+    # ── Revocation ─────────────────────────────────────────────
 
     def revoke_scope(
         self,
@@ -202,6 +268,68 @@ class VinculContext:
             initiated_by=initiated_by,
             authority_type=authority_type,
         )
+
+    # ── Commit ──────────────────────────────────────────────────
+
+    def commit(
+        self,
+        *,
+        action: dict[str, Any],
+        scope_id: str,
+        contract_id: str,
+        initiated_by: str,
+        reversible: bool = False,
+        revert_window: str | None = None,
+        external_ref: str | None = None,
+        budget_amounts: dict[str, str] | None = None,
+    ) -> Receipt:
+        """Execute an action through the full 7-step enforcement pipeline.
+
+        Returns a commitment receipt on success, failure receipt on denial.
+        """
+        return self.runtime.commit(
+            action=action,
+            scope_id=scope_id,
+            contract_id=contract_id,
+            initiated_by=initiated_by,
+            reversible=reversible,
+            revert_window=revert_window,
+            external_ref=external_ref,
+            budget_amounts=budget_amounts,
+        )
+
+    # ── Lookups ────────────────────────────────────────────────
+
+    def get_scope(self, scope_id: str) -> Scope | None:
+        """Look up a scope by ID. Returns None if not found."""
+        return self.runtime.scopes.get(scope_id)
+
+    def get_contract(self, contract_id: str) -> CoalitionContract | None:
+        """Look up a contract by ID. Returns None if not found."""
+        return self.runtime.contracts.get(contract_id)
+
+    def get_receipt(self, receipt_hash: str) -> Receipt | None:
+        """Look up a receipt by hash. Returns None if not found."""
+        return self.runtime.receipts.get(receipt_hash)
+
+    # ── Receipt queries ────────────────────────────────────────
+
+    def receipts_for_contract(self, contract_id: str) -> list[Receipt]:
+        """All receipts for a contract, in append order."""
+        return self.runtime.receipts.for_contract(contract_id)
+
+    def receipts_for_scope(self, scope_id: str) -> list[Receipt]:
+        """All receipts for a scope, in append order."""
+        return self.runtime.receipts.for_scope(scope_id)
+
+    # ── Budget queries ─────────────────────────────────────────
+
+    def get_budget_balance(self, scope_id: str, dimension: str) -> Decimal | None:
+        """Remaining budget (ceiling − consumed) for a scope+dimension.
+
+        Returns None if no ceiling is registered for this pair.
+        """
+        return self.runtime.budget.get_balance(scope_id, dimension)
 
     # ── Convenience accessors ─────────────────────────────────
 

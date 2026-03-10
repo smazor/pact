@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from apps.server.broadcast import receipt_to_event
 from apps.server.demo_state import demo_state
 from apps.server.websocket import manager
+from vincul.sdk import ToolResult
 
 router = APIRouter(tags=["actions"])
 
@@ -29,18 +30,27 @@ async def perform_action(req: ActionRequest):
     if not demo_state.is_setup:
         raise HTTPException(status_code=400, detail="Contract not set up yet.")
 
-    receipt = demo_state.commit_action(
+    result = demo_state.commit_action(
         principal=req.principal,
         scope_id=req.scope_id,
         action=req.action,
         budget_amounts=req.budget_amounts,
     )
 
+    # Unify ToolResult and Receipt into a common response
+    if isinstance(result, ToolResult):
+        receipt = result.receipt
+        detail = receipt.detail
+        if result.success and result.payload:
+            detail = {**detail, **result.payload}
+    else:
+        receipt = result
+        detail = receipt.detail
+
     # Build human-readable summary
-    ns = req.action.get("namespace", "")
     resource = req.action.get("resource", "")
     if receipt.outcome == "success":
-        ext_ref = receipt.detail.get("external_ref", "")
+        ext_ref = detail.get("external_ref", "")
         cost = req.budget_amounts.get("EUR", "") if req.budget_amounts else ""
         summary = f"{req.principal.split(':')[1]} booked {resource}"
         if ext_ref:
@@ -57,6 +67,6 @@ async def perform_action(req: ActionRequest):
         "receipt_kind": receipt.receipt_kind.value,
         "receipt_hash": receipt.receipt_hash,
         "outcome": receipt.outcome,
-        "detail": receipt.detail,
+        "detail": detail,
         "summary": summary,
     }

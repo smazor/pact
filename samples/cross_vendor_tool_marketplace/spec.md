@@ -49,7 +49,7 @@ This demo is built on the **vincul SDK high-level layer** (`vincul.sdk`), which 
 |---|---|---|
 | `vincul.sdk` | `VinculContext` | One-stop coalition setup: principals, contract, scope chain |
 | `vincul.sdk` | `@vincul_tool` | Class decorator: auto-generates tool manifest, sets namespace/tool metadata |
-| `vincul.sdk` | `@tool_operation` | Method decorator: wraps business logic with 7-step pipeline + receipts + attestation |
+| `vincul.sdk` | `@vincul_tool_action` | Method decorator: wraps business logic with 7-step pipeline + receipts + attestation |
 | `vincul.sdk` | `VinculAgent` | Base class for agents: binds identity + contract + scope, provides `invoke()` |
 | `vincul.sdk` | `ToolResult` | Unified return type: success/failure, receipt, payload, attested result |
 
@@ -172,7 +172,7 @@ The demo (`demo.py`) runs 9 steps:
 1. **Vendor Setup** — `VinculContext.add_principal()` for Vendors A, B, C (one call each)
 2. **Contract** — `VinculContext.create_contract()` (single call: creates, registers, activates)
 3. **Scope Chain** — `VinculContext.create_scope_chain()` with a config list (single call)
-4. **Successful Invocation** — `VinculAgent.invoke()` → `@tool_operation` → 7-step pipeline → `ToolResult`
+4. **Successful Invocation** — `VinculAgent.invoke()` → `@vincul_tool_action` → 7-step pipeline → `ToolResult`
 5. **Second Invocation** — quantity=2, also succeeds
 6. **Revocation** — `VinculContext.revoke_scope()` on mid scope → BFS cascade to leaf
 7. **Post-Revocation** — invocation fails with `SCOPE_REVOKED` (fail-closed)
@@ -187,16 +187,16 @@ See [README.md](../../README.md#with-samples) for installation and running instr
 
 ```
 src/vincul/sdk/                                     # Reusable SDK layer (inside vincul package)
-├── __init__.py             # Public API: VinculContext, vincul_tool, tool_operation, vincul_agent, agent_action, ToolResult
+├── __init__.py             # Public API: VinculContext, vincul_tool, vincul_tool_action, vincul_agent, vincul_agent_action, ToolResult
 ├── context.py              # VinculContext — one-stop coalition setup
-├── decorators.py           # @vincul_tool, @tool_operation, ToolResult, attested result builder
-└── agent.py                # @vincul_agent, @agent_action — agent decorators with invoke()
+├── decorators.py           # @vincul_tool, @vincul_tool_action, ToolResult, attested result builder
+└── agent.py                # @vincul_agent, @vincul_agent_action — agent decorators with invoke()
 
 samples/cross_vendor_tool_marketplace/               # Separate package (pip install vincul[samples])
 ├── __init__.py
 ├── spec.md                 # This file
-├── vendor_a_agent.py       # Buyer agent — @vincul_agent + @agent_action (5 lines of logic)
-├── vendor_b_tool.py        # Order tool — @vincul_tool + @tool_operation (7 lines of logic)
+├── vendor_a_agent.py       # Buyer agent — @vincul_agent + @vincul_agent_action (5 lines of logic)
+├── vendor_b_tool.py        # Order tool — @vincul_tool + @vincul_tool_action (7 lines of logic)
 └── demo.py                 # End-to-end demo runner (9 steps)
 ```
 
@@ -210,5 +210,5 @@ samples/cross_vendor_tool_marketplace/               # Separate package (pip ins
 4. **No custom revocation** — uses `ScopeStore.revoke()` with automatic BFS cascade
 5. **Hashes match** — `descriptor_hash` on contracts/scopes and `receipt_hash` on receipts are the canonical vincul domain-prefixed hashes used everywhere
 6. **Wire overlays are minimal** — Tool Manifest and Attested Result are thin JSON envelopes that carry SDK hashes, not alternatives to them
-7. **Decorator-driven tool definition** — `@vincul_tool` + `@tool_operation` eliminate boilerplate: tool authors write only business logic; validation, receipts, and attestation are automatic
+7. **Decorator-driven tool definition** — `@vincul_tool` + `@vincul_tool_action` eliminate boilerplate: tool authors write only business logic; validation, receipts, and attestation are automatic
 8. **Easy onboarding** — new tools require ~10 lines (class + one decorated method); new agents require ~5 lines (subclass VinculAgent + domain method); coalition setup is a single `VinculContext` with 3 calls

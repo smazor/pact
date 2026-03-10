@@ -1,6 +1,6 @@
 """Vendor B — Order Tool provider, built on vincul SDK decorators.
 
-The @vincul_tool and @tool_operation decorators handle:
+The @vincul_tool and @vincul_tool_action decorators handle:
   - Tool manifest generation
   - Action dict construction
   - 7-step enforcement pipeline (runtime.commit)
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from vincul.identity import KeyPair
 from vincul.runtime import VinculRuntime
-from vincul.sdk import tool_operation, vincul_tool
+from vincul.sdk import vincul_tool_action, vincul_tool
 from vincul.types import OperationType
 
 
@@ -33,7 +33,7 @@ class VendorBToolProvider:
         self.runtime = runtime
         self._order_counter = 0
 
-    @tool_operation(action_type=OperationType.COMMIT, resource_key="item_id")
+    @vincul_tool_action(action_type=OperationType.COMMIT, resource_key="item_id")
     def place_order(self, *, item_id: str, quantity: int, shipping_zip: str) -> dict:
         """Create an order (dummy side-effect)."""
         self._order_counter += 1

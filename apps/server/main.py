@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from apps.server.demo_state import demo_state
-from apps.server.routes import actions, contract, demo, votes
+from apps.server.routes import actions, contract, demo, marketplace, votes
 from apps.server.websocket import manager
 
 # Frontend dist directory (built by Vite)
@@ -41,6 +41,7 @@ app.include_router(demo.router)
 app.include_router(contract.router)
 app.include_router(actions.router)
 app.include_router(votes.router)
+app.include_router(marketplace.router)
 
 
 # WebSocket endpoint

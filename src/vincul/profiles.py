@@ -71,7 +71,16 @@ class ComplianceProfile:
         return vincul_hash("profile", self.normalize())
 
     def seal(self) -> "ComplianceProfile":
-        """Compute and set descriptor_hash. Returns self for chaining."""
+        """Compute and set descriptor_hash. Raises if already sealed.
+
+        Not thread-safe: the check-then-set is not atomic. Concurrent
+        callers could both pass the guard. This is acceptable because
+        seal() is deterministic (same fields → same hash) and Vincul
+        stores have no thread-safety guarantees. Callers needing
+        concurrency must synchronize externally.
+        """
+        if self.descriptor_hash is not None:
+            raise RuntimeError("ComplianceProfile already sealed")
         self.descriptor_hash = self.compute_hash()
         return self
 

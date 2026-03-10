@@ -1,12 +1,12 @@
-"""vincul.sdk.agent — @vincul_agent and @agent_action decorators.
+"""vincul.sdk.agent — @vincul_agent and @vincul_agent_action decorators.
 
-Mirrors the tool-side decorators (@vincul_tool / @tool_operation) so that
+Mirrors the tool-side decorators (@vincul_tool / @vincul_tool_action) so that
 both sides of a vincul coalition use the same annotation-driven pattern.
 
 @vincul_agent: class decorator — binds agent identity, contract, and scope;
                injects invoke() for calling tool operations.
 
-@agent_action: method decorator — auto-routes to a @tool_operation on a tool,
+@vincul_agent_action: method decorator — auto-routes to a @vincul_tool_action on a tool,
                injecting authority params (scope_id, contract_id, initiated_by).
 """
 
@@ -31,7 +31,7 @@ def vincul_agent(*, agent_id: str):
 
         @vincul_agent(agent_id="agent:VendorA:buyer1")
         class BuyerAgent:
-            @agent_action(operation="place_order")
+            @vincul_agent_action(operation="place_order")
             def buy(self, tool, *, item_id, quantity, shipping_zip):
                 \"\"\"Decorated — body is replaced by auto-invoke.\"\"\"
 
@@ -55,7 +55,7 @@ def vincul_agent(*, agent_id: str):
         cls.__init__ = wrapped_init
 
         def invoke(self, tool: Any, operation: str, **params: Any) -> ToolResult:
-            """Invoke a @tool_operation on a tool, injecting authority params."""
+            """Invoke a @vincul_tool_action on a tool, injecting authority params."""
             method = getattr(tool, operation)
             return method(
                 scope_id=self.scope.id,
@@ -71,9 +71,9 @@ def vincul_agent(*, agent_id: str):
     return decorator
 
 
-# ── @agent_action method decorator ────────────────────────────
+# ── @vincul_agent_action method decorator ────────────────────────────
 
-def agent_action(fn=None, *, operation: str | None = None):
+def vincul_agent_action(fn=None, *, operation: str | None = None):
     """Method decorator for agent actions.
 
     Auto-invokes ``tool.<operation>(**business_params)`` with authority
@@ -87,11 +87,11 @@ def agent_action(fn=None, *, operation: str | None = None):
 
     Example::
 
-        @agent_action(operation="place_order")
+        @vincul_agent_action(operation="place_order")
         def buy(self, tool, *, item_id, quantity, shipping_zip):
             \"\"\"Auto-invokes tool.place_order(...) with authority injection.\"\"\"
 
-        @agent_action  # operation defaults to method name
+        @vincul_agent_action  # operation defaults to method name
         def place_order(self, tool, *, item_id, quantity):
             \"\"\"Auto-invokes tool.place_order(...).\"\"\"
     """
@@ -110,6 +110,6 @@ def agent_action(fn=None, *, operation: str | None = None):
         return wrapper
 
     if fn is not None:
-        # Called without parentheses: @agent_action
+        # Called without parentheses: @vincul_agent_action
         return decorator(fn)
     return decorator

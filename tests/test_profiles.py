@@ -93,6 +93,13 @@ class TestProfileHash(unittest.TestCase):
         p = make_minimal_profile()
         self.assertFalse(p.verify_hash())
 
+    def test_seal_twice_raises(self):
+        p = make_minimal_profile()
+        p.seal()
+        with self.assertRaises(RuntimeError) as ctx:
+            p.seal()
+        self.assertIn("already sealed", str(ctx.exception))
+
     def test_hash_changes_with_different_bounds(self):
         p1 = make_minimal_profile()
         p1.seal()

@@ -108,9 +108,9 @@ This implementation is **not normative**. Third parties may replace it entirely.
 |---|---|---|
 | `VinculContext` | `vincul.sdk.context` | One-stop coalition setup: principal registration, contract creation/activation, scope chain construction |
 | `@vincul_tool` | `vincul.sdk.decorators` | Class decorator for tool providers: sets namespace/tool metadata, auto-generates tool manifest |
-| `@tool_operation` | `vincul.sdk.decorators` | Method decorator: wraps business logic with 7-step enforcement pipeline + receipt emission + attested result signing |
+| `@vincul_tool_action` | `vincul.sdk.decorators` | Method decorator: wraps business logic with 7-step enforcement pipeline + receipt emission + attested result signing |
 | `@vincul_agent` | `vincul.sdk.agent` | Class decorator for agents: binds agent identity to contract + scope, injects `invoke()` method |
-| `@agent_action` | `vincul.sdk.agent` | Method decorator: auto-routes to a `@tool_operation` on a tool with authority parameter injection |
+| `@vincul_agent_action` | `vincul.sdk.agent` | Method decorator: auto-routes to a `@vincul_tool_action` on a tool with authority parameter injection |
 | `ToolResult` | `vincul.sdk.decorators` | Unified return type: `.success`, `.receipt`, `.payload`, `.attested_result`, `.failure_code` |
 
 **Relationship to normative constructs:**
@@ -132,7 +132,7 @@ This implementation is **not normative**. Third parties may replace it entirely.
   └─────────────────────────────────────────────────────┘
 ```
 
-The decorator layer does not alter validation semantics. Every `@tool_operation` call passes through the same 7-step pipeline. Every receipt is sealed with the same domain-prefixed hash. The SDK layer is syntactic sugar — it can be removed without affecting protocol conformance.
+The decorator layer does not alter validation semantics. Every `@vincul_tool_action` call passes through the same 7-step pipeline. Every receipt is sealed with the same domain-prefixed hash. The SDK layer is syntactic sugar — it can be removed without affecting protocol conformance.
 
 ### 4.3 What Is NOT Required
 

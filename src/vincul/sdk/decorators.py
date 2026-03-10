@@ -1,4 +1,4 @@
-"""vincul.sdk.decorators — @vincul_tool and @tool_operation decorators.
+"""vincul.sdk.decorators — @vincul_tool and @vincul_tool_action decorators.
 
 Wraps tool classes and their operation methods so that all vincul
 initialization, validation pipeline, receipt handling, and attestation
@@ -21,7 +21,7 @@ from vincul.types import OperationType, ReceiptKind
 
 @dataclass
 class ToolResult:
-    """Unified return type from a @tool_operation decorated method."""
+    """Unified return type from a @vincul_tool_action decorated method."""
 
     success: bool
     receipt: Receipt
@@ -103,7 +103,7 @@ def vincul_tool(
                 self.key_pair = key_pair
                 self.runtime = runtime
 
-            @tool_operation(action_type=OperationType.COMMIT, resource_key="item_id")
+            @vincul_tool_action(action_type=OperationType.COMMIT, resource_key="item_id")
             def place_order(self, *, item_id, quantity, shipping_zip):
                 return {"order_id": "ord-001", "charged": quantity * 12.34}
     """
@@ -118,7 +118,7 @@ def vincul_tool(
         @functools.wraps(orig_init)
         def wrapped_init(self, *args, **kwargs):
             orig_init(self, *args, **kwargs)
-            # Collect @tool_operation methods and build manifest
+            # Collect @vincul_tool_action methods and build manifest
             ops = []
             for name in dir(type(self)):
                 attr = getattr(type(self), name, None)
@@ -153,9 +153,9 @@ def vincul_tool(
     return decorator
 
 
-# ── @tool_operation method decorator ──────────────────────────
+# ── @vincul_tool_action method decorator ──────────────────────────
 
-def tool_operation(
+def vincul_tool_action(
     *,
     action_type: OperationType = OperationType.COMMIT,
     resource_key: str | None = None,
@@ -176,7 +176,7 @@ def tool_operation(
 
     Example::
 
-        @tool_operation(action_type=OperationType.COMMIT, resource_key="item_id")
+        @vincul_tool_action(action_type=OperationType.COMMIT, resource_key="item_id")
         def place_order(self, *, item_id: str, quantity: int) -> dict:
             return {"order_id": "ord-001"}
 
