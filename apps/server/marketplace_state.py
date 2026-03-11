@@ -180,7 +180,7 @@ class MarketplaceState:
             ],
         )
 
-        self.agent = BuyerAgent(contract=self.contract, scope=self.scopes[-1])
+        self.agent = BuyerAgent(contract=self.contract, scopes=[self.scopes[-1]])
         self._scope_complete = True
 
         # Collect delegation receipts
@@ -370,7 +370,7 @@ class MarketplaceState:
                 {"ceiling": "params.quantity <= 5", "delegate": False, "ttl_hours": 1},
             ],
         )
-        self.agent = BuyerAgent(contract=self.contract, scope=self.scopes[-1])
+        self.agent = BuyerAgent(contract=self.contract, scopes=[self.scopes[-1]])
 
 
 # ── Module-level singleton ────────────────────────────────────
