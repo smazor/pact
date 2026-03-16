@@ -6,7 +6,7 @@ FROM node:22-slim AS base
 # Install Python 3.11
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3 python3-pip python3-venv curl git && \
+        python3 python3-pip python3-venv curl git openssl && \
     rm -rf /var/lib/apt/lists/*
 
 # Install OpenClaw globally

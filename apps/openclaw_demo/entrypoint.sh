@@ -22,6 +22,16 @@ for i in $(seq 1 10); do
     sleep 0.5
 done
 
+# ── LLM logging proxy (captures exact API requests) ──────────
+if [ "${LLM_LOG_PROXY:-0}" = "1" ]; then
+    echo "[*] Starting LLM logging proxy on :9443..."
+    python3 -m apps.openclaw_demo.orchestrator.llm_log_proxy &
+    LOG_PROXY_PID=$!
+    sleep 1
+    export ANTHROPIC_BASE_URL=https://localhost:9443
+    echo "[+] LLM requests will be logged to /tmp/llm_requests.jsonl"
+fi
+
 # ── OpenClaw setup ────────────────────────────────────────────
 echo "[*] Configuring OpenClaw model auth..."
 
@@ -102,6 +112,12 @@ Bob enjoys Italian and French cuisine.
 When you receive a coordination request, check availability and respond helpfully.
 Once plans are confirmed, message Bob with the details.
 BOB_EOF
+
+# Remove default OpenClaw safety docs from workspaces — the .clawinstructions
+# above are the ONLY system prompts.  Many real deployments don't ship the
+# default SOUL.md / AGENTS.md, so this is realistic.
+rm -f /tmp/alice-workspace/{SOUL,AGENTS,BOOTSTRAP,IDENTITY,USER,TOOLS,HEARTBEAT}.md
+rm -f /tmp/bob-workspace/{SOUL,AGENTS,BOOTSTRAP,IDENTITY,USER,TOOLS,HEARTBEAT}.md
 
 echo "[+] Agents configured"
 

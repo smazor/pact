@@ -38,10 +38,12 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       # Anthropic SDK env var (OpenClaw reads this directly)
       - ANTHROPIC_API_KEY=${LLM_API_KEY}
-      # Route Anthropic API through the proxy container
+      # Route Anthropic API through the proxy container (overridden by entrypoint if LLM_LOG_PROXY=1)
       - ANTHROPIC_BASE_URL=https://llm-proxy:443
       # Disable TLS verification for proxy (traffic stays on internal Docker network)
       - NODE_TLS_REJECT_UNAUTHORIZED=0
+      # Set to 1 to capture exact LLM API requests for debugging
+      - LLM_LOG_PROXY=${LLM_LOG_PROXY:-0}
     networks:
       - internal        # reaches llm-proxy (no internet)
       - hostports       # allows port forwarding to host

@@ -4,6 +4,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Which act to run (default: act1)
+ACT="${1:-act1}"
+
 # Detect docker compose command (v2 plugin vs v1 standalone)
 if docker compose version > /dev/null 2>&1; then
     DC="docker compose"
@@ -21,49 +24,51 @@ if [ -z "$LLM_API_KEY" ]; then
     echo ""
     echo "Usage:"
     echo "  export LLM_API_KEY=sk-ant-...   # Anthropic"
-    echo "  export LLM_API_KEY=sk-...       # OpenAI"
-    echo "  ./run.sh"
-    echo ""
-    echo "Or for Ollama (no key needed):"
-    echo "  export LLM_PROVIDER=ollama LLM_BASE_URL=http://host.docker.internal:11434"
-    echo "  export LLM_API_KEY=unused"
-    echo "  ./run.sh"
+    echo "  ./run.sh          # Run Act 1 (default)"
+    echo "  ./run.sh act2     # Run Act 2 (the breach)"
+    echo "  ./run.sh act3     # Run Act 3 (the fix)"
     exit 1
 fi
 
 echo "=== OpenClaw + Vincul Demo ==="
 echo ""
-echo "Building Docker image..."
-$DC build
 
-echo ""
-echo "Starting services..."
-$DC up -d
+# Build and start if not already running
+if ! curl -sf http://localhost:18789/health > /dev/null 2>&1; then
+    echo "Building Docker image..."
+    $DC build
 
-echo ""
-echo "Waiting for services to be ready..."
-for i in $(seq 1 30); do
-    if curl -sf http://localhost:18789/health > /dev/null 2>&1; then
-        echo "OpenClaw gateway ready!"
-        break
-    fi
-    if [ "$i" -eq 30 ]; then
-        echo "ERROR: Gateway did not start in time. Check logs:"
-        echo "  $DC logs"
-        exit 1
-    fi
-    sleep 1
-done
+    echo ""
+    echo "Starting services..."
+    $DC up -d
+
+    echo ""
+    echo "Waiting for services to be ready..."
+    for i in $(seq 1 30); do
+        if curl -sf http://localhost:18789/health > /dev/null 2>&1; then
+            echo "OpenClaw gateway ready!"
+            break
+        fi
+        if [ "$i" -eq 30 ]; then
+            echo "ERROR: Gateway did not start in time. Check logs:"
+            echo "  $DC logs"
+            exit 1
+        fi
+        sleep 1
+    done
+else
+    echo "Services already running."
+fi
 
 echo ""
 echo "=== Services Running ==="
 echo "  WebChat UI:     http://localhost:18789"
 echo "  Vincul Enforce: http://localhost:8100"
 echo ""
-echo "=== Running Act 1 ==="
+echo "=== Running ${ACT} ==="
 echo ""
 
-$DC exec demo python -m apps.openclaw_demo.orchestrator.act1
+$DC exec demo python -m "apps.openclaw_demo.orchestrator.${ACT}"
 
 echo ""
 echo "=== Done ==="
