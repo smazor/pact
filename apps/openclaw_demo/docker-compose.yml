@@ -31,6 +31,7 @@ services:
     ports:
       - "127.0.0.1:18789:18789"   # OpenClaw WebChat (localhost only)
       - "127.0.0.1:8100:8100"     # Vincul enforcement (localhost only)
+      - "127.0.0.1:3000:3000"     # Demo web UI (localhost only)
     environment:
       - LLM_API_KEY=${LLM_API_KEY:?Set LLM_API_KEY to your API key}
       - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}

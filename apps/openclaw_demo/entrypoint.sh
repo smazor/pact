@@ -149,14 +149,20 @@ done
     done
 ) &
 
+# ── Demo web UI ────────────────────────────────────────────
+echo "[*] Starting demo web UI on :3000..."
+cd /app
+PYTHONPATH=/app python3 -m uvicorn apps.openclaw_demo.demo_server:app \
+    --host 0.0.0.0 --port 3000 --log-level warning &
+DEMO_UI_PID=$!
+echo "[+] Demo UI ready"
+
 echo ""
 echo "=== Services running ==="
+echo "  Demo UI:          http://localhost:3000"
 echo "  OpenClaw WebChat: http://localhost:18789"
 echo "  Vincul Enforce:   http://localhost:8100"
 echo ""
-echo "Run the demo orchestrator:"
-echo "  docker compose exec demo python -m apps.openclaw_demo.orchestrator.act1"
-echo ""
 
 # Keep container alive
-wait $OPENCLAW_PID $VINCUL_PID
+wait $OPENCLAW_PID $VINCUL_PID $DEMO_UI_PID

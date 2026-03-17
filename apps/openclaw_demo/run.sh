@@ -4,8 +4,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Which act to run (default: act1)
-ACT="${1:-act1}"
+# Which act to run (optional — if omitted, just start services + web UI)
+ACT="${1:-}"
 
 # Detect docker compose command (v2 plugin vs v1 standalone)
 if docker compose version > /dev/null 2>&1; then
@@ -24,9 +24,10 @@ if [ -z "$LLM_API_KEY" ]; then
     echo ""
     echo "Usage:"
     echo "  export LLM_API_KEY=sk-ant-...   # Anthropic"
-    echo "  ./run.sh          # Run Act 1 (default)"
-    echo "  ./run.sh act2     # Run Act 2 (the breach)"
-    echo "  ./run.sh act3     # Run Act 3 (the fix)"
+    echo "  ./run.sh          # Start services + open web UI"
+    echo "  ./run.sh act1     # Run Act 1 (CLI)"
+    echo "  ./run.sh act2     # Run Act 2 (CLI)"
+    echo "  ./run.sh act3     # Run Act 3 (CLI)"
     exit 1
 fi
 
@@ -62,15 +63,25 @@ fi
 
 echo ""
 echo "=== Services Running ==="
+echo "  Demo UI:        http://localhost:3000"
 echo "  WebChat UI:     http://localhost:18789"
 echo "  Vincul Enforce: http://localhost:8100"
 echo ""
-echo "=== Running ${ACT} ==="
-echo ""
 
-$DC exec demo python -m "apps.openclaw_demo.orchestrator.${ACT}"
+if [ -n "$ACT" ]; then
+    echo "=== Running ${ACT} ==="
+    echo ""
+    $DC exec -w /app/apps/openclaw_demo demo python -m "orchestrator.${ACT}"
+    echo ""
+    echo "=== Done ==="
+else
+    echo "Open http://localhost:3000 to run the demo."
+    echo ""
+    echo "Or run an act directly:"
+    echo "  ./run.sh act1     # Normal coordination"
+    echo "  ./run.sh act2     # The Breach (jailbreak)"
+fi
 
 echo ""
-echo "=== Done ==="
-echo "Services are still running. To stop:"
+echo "To stop services:"
 echo "  cd $(pwd) && $DC down"

@@ -32,7 +32,7 @@ COPY apps/openclaw_demo/config/openclaw.json /root/.openclaw/openclaw.json
 COPY apps/openclaw_demo/config/agents/ /root/.openclaw/agents/
 
 # Expose ports: OpenClaw gateway + Vincul enforcement service
-EXPOSE 18789 8100
+EXPOSE 18789 8100 3000
 
 # Entry point: start both services
 COPY apps/openclaw_demo/entrypoint.sh /app/entrypoint.sh
