@@ -1,8 +1,9 @@
-"""Agentic demo engine — runs LLM agents under Vincul governance over VinculNet.
+"""Agentic demo engine — base class for multi-agent negotiation under Vincul governance.
 
-Uses Strands Agents SDK with Bedrock. Each agent turn calls Claude via Strands
-with custom tools that enforce actions through Vincul's 7-step pipeline and
-broadcast receipts over VinculNet.
+Framework-specific subclasses (Strands, LangGraph) override three methods:
+  _make_tools()   — wrap raw tools with the framework's decorator
+  _build_agents() — create framework-specific agent instances
+  _agent_turn()   — invoke the framework agent for one turn
 """
 
 from __future__ import annotations
@@ -11,17 +12,13 @@ import asyncio
 import copy
 import json
 import logging
-from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any
 
-from botocore.config import Config as BotocoreConfig
-from strands import Agent, tool
-from strands.models.bedrock import BedrockModel
-
 from vincul.identity import KeyPair
-from vincul.receipts import Receipt
-from vincul.runtime import VinculRuntime
-from vincul.sdk import VinculContext
+from vincul.receipts import Receipt, new_uuid, now_utc
+from vincul.sdk import VinculContext, ToolResult, VinculAgentContext, vincul_enforce
 from vincul.scopes import Scope
 from vincul.transport.protocol_peer import ProtocolPeer
 from vincul.types import Domain, OperationType
@@ -46,9 +43,6 @@ class ModelConfig:
     region_name: str = "us-west-2"
     temperature: float = 0.7
     max_tokens: int = 1024
-    connect_timeout: int = 120
-    read_timeout: int = 120
-    max_retries: int = 5
 
 
 @dataclass
@@ -65,8 +59,12 @@ class NegotiationEvent:
     receipt_hash: str | None = None
 
 
-class NegotiationEngine:
-    """Orchestrates multi-agent negotiation under Vincul governance."""
+class NegotiationEngine(ABC):
+    """Orchestrates multi-agent negotiation under Vincul governance.
+
+    Subclasses provide framework-specific tool construction, agent building,
+    and turn execution.
+    """
 
     def __init__(
         self,
@@ -98,11 +96,27 @@ class NegotiationEngine:
         self._commit_authorities: dict[str, set[str]] = {}
         # Enriched system prompts built after setup
         self._system_prompts: dict[str, str] = {}
-        # Strands Agent instances per principal
-        self._agents: dict[str, Agent] = {}
+        # VinculAgentContext per principal
+        self._vincul_agents: dict[str, VinculAgentContext] = {}
         # Current principal context for tool dispatch
         self._current_principal: str | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+
+    # ── Abstract methods (framework-specific) ──────────────
+
+    @abstractmethod
+    def _make_tools(self) -> list:
+        """Create framework-wrapped tool functions."""
+
+    @abstractmethod
+    def _build_agents(self) -> None:
+        """Create framework-specific agent instances per principal."""
+
+    @abstractmethod
+    async def _agent_turn(self, principal_id: str, round_num: int) -> None:
+        """Execute one agent turn using the framework."""
+
+    # ── Event callbacks ────────────────────────────────────
 
     def on_event(self, callback) -> None:
         self._event_callbacks.append(callback)
@@ -119,18 +133,29 @@ class NegotiationEngine:
         for cb in self._receipt_callbacks:
             cb(receiver, sender, receipt_hash)
 
-    # ── Tools (Strands @tool decorated) ──────────────────────
+    # ── Shared tool creation ───────────────────────────────
 
-    def _make_tools(self):
-        """Create tool functions bound to this engine instance."""
+    def _make_raw_tools(self):
+        """Create tool functions with @vincul_enforce applied but no framework decorator.
+
+        Returns (propose_terms, accept_terms, send_message) — ready to be
+        wrapped by the subclass's framework decorator.
+        """
         engine = self
 
-        @tool(name="propose_terms")
+        @vincul_enforce(
+            action_type=OperationType.PROPOSE,
+            tool_id="agentic_demo:propose_terms",
+            agent=lambda: engine._vincul_agents[engine._current_principal],
+            namespace=lambda category, **_: f"terms.{category}",
+            action_params="params",
+            pre_check=lambda **kw: engine._check_agreed(kw.get("category", "")),
+        )
         def propose_terms(
             category: str,
             params: dict,
             rationale: str,
-        ) -> str:
+        ) -> dict:
             """Propose terms to other parties (non-binding).
 
             Args:
@@ -138,18 +163,21 @@ class NegotiationEngine:
                 params: Proposed values. Use exact field names: valuation: {pre_money_valuation}; equity: {founder_equity_pct, investor_equity_pct}; board: {founder_board_seats, investor_board_seats}; vesting: {vesting_years, cliff_months}; liquidation: {liquidation_preference}.
                 rationale: Brief explanation of why you're proposing these terms.
             """
-            result = engine._sync_handle_tool_call(
-                engine._current_principal, "propose_terms",
-                {"category": category, "params": params, "rationale": rationale},
-            )
-            return json.dumps(result)
+            return {"category": category, "params": params}
 
-        @tool(name="accept_terms")
+        @vincul_enforce(
+            action_type=OperationType.COMMIT,
+            tool_id="agentic_demo:accept_terms",
+            agent=lambda: engine._vincul_agents[engine._current_principal],
+            namespace=lambda category, **_: f"terms.{category}",
+            action_params="params",
+            pre_check=lambda **kw: engine._check_agreed(kw.get("category", "")),
+        )
         def accept_terms(
             category: str,
             params: dict,
             rationale: str,
-        ) -> str:
+        ) -> dict:
             """Commit to terms (binding — locks your position). Only use when ready to agree.
 
             Args:
@@ -157,28 +185,157 @@ class NegotiationEngine:
                 params: Exact terms to commit. Use exact field names: valuation: {pre_money_valuation}; equity: {founder_equity_pct, investor_equity_pct}; board: {founder_board_seats, investor_board_seats}; vesting: {vesting_years, cliff_months}; liquidation: {liquidation_preference}.
                 rationale: Brief explanation of why you're accepting.
             """
-            result = engine._sync_handle_tool_call(
-                engine._current_principal, "accept_terms",
-                {"category": category, "params": params, "rationale": rationale},
-            )
-            return json.dumps(result)
+            return {"category": category, "params": params}
 
-        @tool(name="send_message")
         def send_message(message: str) -> str:
             """Send a message to other negotiation parties. Use to discuss or explain position.
 
             Args:
                 message: Your message to the other parties.
             """
-            result = engine._sync_handle_tool_call(
-                engine._current_principal, "send_message",
-                {"message": message},
-            )
-            return json.dumps(result)
+            pid = engine._current_principal
+            config = engine.agent_configs[pid]
+            print(f"\n  [{config.agent_id}] 💬 {message}")
+            engine._emit_event(NegotiationEvent(
+                agent_id=config.agent_id,
+                event_type="message",
+                message=message,
+            ))
+            engine._broadcast_message(pid, message)
+            return json.dumps({"status": "sent", "message": "Message delivered to all parties"})
 
-        return [propose_terms, accept_terms, send_message]
+        return propose_terms, accept_terms, send_message
 
-    # ── Setup ─────────────────────────────────────────────────
+    # ── Callbacks for @vincul_enforce ──────────────────────
+
+    def _check_agreed(self, category: str) -> str | None:
+        """Pre-check: deny if category is already agreed."""
+        if category not in self._agreed:
+            return None
+        msg = f"Category '{category}' is already agreed upon: {json.dumps(self._agreed[category])}. No further changes allowed."
+        pid = self._current_principal
+        config = self.agent_configs[pid]
+        print(f"\n  [{config.agent_id}] ⛔ {category}: ALREADY AGREED")
+        self._emit_event(NegotiationEvent(
+            agent_id=config.agent_id,
+            event_type="denial",
+            category=category,
+            failure_code="ALREADY_AGREED",
+            failure_message=msg,
+        ))
+        return msg
+
+    def _on_tool_result(
+        self, tool_result: ToolResult, action_type: OperationType, kwargs: dict
+    ) -> dict | None:
+        """Callback fired after every enforcement attempt (success or failure)."""
+        pid = self._current_principal
+        config = self.agent_configs[pid]
+        category = kwargs.get("category", "")
+        params = kwargs.get("params", {})
+        rationale = kwargs.get("rationale", "")
+        extra = {}
+
+        if tool_result.success:
+            receipt = tool_result.receipt
+            label = "ACCEPTED" if action_type == OperationType.COMMIT else "PROPOSED"
+            emoji = "✅" if action_type == OperationType.COMMIT else "📋"
+            print(f"\n  [{config.agent_id}] {emoji} {label} {category}: {json.dumps(params)}")
+            print(f"    Rationale: {rationale}")
+            print(f"    Receipt: {receipt.receipt_hash[:32]}...")
+
+            self._emit_event(NegotiationEvent(
+                agent_id=config.agent_id,
+                event_type="acceptance" if action_type == OperationType.COMMIT else "proposal",
+                category=category,
+                params=params,
+                rationale=rationale,
+                receipt_hash=receipt.receipt_hash,
+            ))
+
+            if action_type == OperationType.COMMIT:
+                extra = self._track_commit(pid, category, params)
+        else:
+            print(f"\n  [{config.agent_id}] ❌ DENIED {action_type.value} {category}: {tool_result.failure_code}")
+            print(f"    {tool_result.message}")
+            print(f"    Attempted: {json.dumps(params)}")
+
+            self._emit_event(NegotiationEvent(
+                agent_id=config.agent_id,
+                event_type="denial",
+                category=category,
+                params=params,
+                rationale=rationale,
+                failure_code=tool_result.failure_code,
+                failure_message=tool_result.message,
+            ))
+
+        return extra
+
+    def _track_commit(self, principal_id: str, category: str, params: dict) -> dict:
+        """Track a commit and check for agreement. Returns extra response fields."""
+        extra = {}
+        if category not in self._commits:
+            self._commits[category] = {}
+        self._commits[category][principal_id] = params
+
+        required = self._commit_authorities.get(category, set())
+        if required and required.issubset(self._commits.get(category, {}).keys()):
+            committed_values = list(self._commits[category].values())
+            if all(v == committed_values[0] for v in committed_values[1:]):
+                self._agreed[category] = committed_values[0]
+                parties = [self.agent_configs[p].agent_id for p in required]
+                print(f"\n  🤝 AGREED on {category}: {json.dumps(committed_values[0])}")
+                print(f"     Parties: {', '.join(parties)}")
+                self._emit_event(NegotiationEvent(
+                    agent_id="system",
+                    event_type="agreed",
+                    category=category,
+                    params=committed_values[0],
+                    message=f"All parties agreed on {category}! Terms locked.",
+                ))
+                extra["message"] = (
+                    f"AGREED — all parties with authority have committed to the same terms "
+                    f"on {category}. This category is now locked."
+                )
+            else:
+                other_commits = {
+                    self.agent_configs[pid].agent_id: p
+                    for pid, p in self._commits[category].items()
+                    if pid != principal_id
+                }
+                extra["note"] = (
+                    f"Other commits on {category}: {json.dumps(other_commits)}. "
+                    f"Terms don't match yet — category not agreed."
+                )
+        return extra
+
+    def _make_broadcaster(self, peer: ProtocolPeer):
+        """Create a sync callback that broadcasts a receipt over VinculNet."""
+        engine = self
+
+        def broadcast(receipt: Receipt) -> None:
+            async def _send():
+                payload = {"type": "receipt", "receipt": receipt.to_dict()}
+                for peer_id in peer.peer.registry.all_peers():
+                    await peer.peer.send(peer_id, payload)
+            asyncio.run_coroutine_threadsafe(_send(), engine._loop).result(timeout=10)
+
+        return broadcast
+
+    def _broadcast_message(self, principal_id: str, message: str) -> None:
+        """Broadcast a chat message over VinculNet (sync wrapper)."""
+        peer = self.peers[principal_id]
+        config = self.agent_configs[principal_id]
+
+        async def _send():
+            payload = {"type": "message", "sender": config.agent_id, "message": message}
+            for peer_id in peer.peer.registry.all_peers():
+                await peer.peer.send(peer_id, payload)
+
+        asyncio.run_coroutine_threadsafe(_send(), self._loop).result(timeout=10)
+
+    # ── Setup ──────────────────────────────────────────────
 
     async def setup(self) -> None:
         """Initialize contracts, scopes, peers, and VinculNet connections."""
@@ -208,7 +365,6 @@ class NegotiationEngine:
         for pid, config in self.agent_configs.items():
             self.scopes[pid] = []
             for scope_def in config.scopes:
-                from vincul.receipts import new_uuid, now_utc
                 scope = Scope(
                     id=new_uuid(),
                     issued_by_scope_id=None,
@@ -224,7 +380,7 @@ class NegotiationEngine:
                     delegate=scope_def.get("delegate", False),
                     revoke="principal_only",
                 )
-                self.ctx.runtime.scopes.add(scope)
+                self.ctx.add_scope(scope)
                 self.scopes[pid].append(scope)
                 ops = [t.value for t in scope_def["operations"]]
                 print(f"  Scope: {pid} -> {scope_def['namespace']} [{', '.join(ops)}] ceiling={scope_def.get('ceiling', 'TOP')}")
@@ -246,7 +402,7 @@ class NegotiationEngine:
             if i == 0:
                 peer.runtime = base_runtime
             else:
-                peer.runtime = _replicate_runtime(base_runtime)
+                peer.runtime = copy.deepcopy(base_runtime)
             self.peers[pid] = peer
             self._received_receipts[pid] = []
 
@@ -256,6 +412,18 @@ class NegotiationEngine:
                     self._on_receipt_received(principal_id, sender_id, receipt)
                 return handler
             peer.on_receipt(_make_handler(pid))
+
+        # 4b. Build VinculAgentContext per principal
+        for pid in self.agent_configs:
+            self._vincul_agents[pid] = VinculAgentContext(
+                principal_id=pid,
+                contract_id=self.contract.contract_id,
+                signer=self.keypairs[pid],
+                runtime=self.peers[pid].runtime,
+                _scopes=self.scopes[pid],
+                on_commit=self._make_broadcaster(self.peers[pid]),
+                on_result=self._on_tool_result,
+            )
 
         # 5. Start VinculNet
         peer_ids = list(self.peers.keys())
@@ -277,7 +445,7 @@ class NegotiationEngine:
 
         print(f"\n  Setup complete. {len(self.peers)} agents ready.")
 
-        # 6. Build system prompts and Strands agents
+        # 6. Build system prompts and framework agents
         self._build_system_prompts()
         self._build_agents()
 
@@ -311,30 +479,7 @@ class NegotiationEngine:
             own_auth = "YOUR AUTHORITY:\n" + "\n".join(my_scopes)
             self._system_prompts[pid] = f"{config.system_prompt}\n\n{shared}\n\n{own_auth}"
 
-    def _build_agents(self) -> None:
-        """Create a Strands Agent per principal."""
-        tools = self._make_tools()
-        cfg = self.model_config
-
-        for pid in self.agent_configs:
-            model = BedrockModel(
-                model_id=cfg.model_id,
-                region_name=cfg.region_name,
-                temperature=cfg.temperature,
-                max_tokens=cfg.max_tokens,
-                boto_client_config=BotocoreConfig(
-                    connect_timeout=cfg.connect_timeout,
-                    read_timeout=cfg.read_timeout,
-                    retries={"max_attempts": cfg.max_retries, "mode": "adaptive"},
-                ),
-            )
-            self._agents[pid] = Agent(
-                model=model,
-                tools=tools,
-                system_prompt=self._system_prompts[pid],
-            )
-
-    # ── Run negotiation ───────────────────────────────────────
+    # ── Run negotiation ────────────────────────────────────
 
     async def run(self) -> None:
         """Run the negotiation for max_rounds rounds."""
@@ -374,217 +519,7 @@ class NegotiationEngine:
             return False
         return all(cat in self._agreed for cat in self._commit_authorities)
 
-    async def _agent_turn(self, principal_id: str, round_num: int) -> None:
-        """Execute one turn for an agent using Strands."""
-        config = self.agent_configs[principal_id]
-        context = self._build_context(principal_id)
-
-        print(f"\n  [{config.agent_id}] thinking...")
-
-        # Set current principal so tools know who's calling
-        self._current_principal = principal_id
-
-        try:
-            agent = self._agents[principal_id]
-            # Strands handles the agentic loop (tool calls, retries) automatically
-            result = await asyncio.to_thread(agent, context)
-
-            # Extract text response
-            text = str(result)
-            if text.strip():
-                print(f"\n  [{config.agent_id}] {text.strip()[:200]}")
-
-            # Reset conversation for next turn
-            agent.messages.clear()
-
-        except Exception as e:
-            print(f"\n  [{config.agent_id}] Agent error: {e}")
-        finally:
-            self._current_principal = None
-
-    # ── Tool dispatch ─────────────────────────────────────────
-
-    def _sync_handle_tool_call(
-        self, principal_id: str, tool_name: str, tool_input: dict
-    ) -> dict:
-        """Synchronous wrapper for _handle_tool_call (called from Strands tools)."""
-        future = asyncio.run_coroutine_threadsafe(
-            self._handle_tool_call(principal_id, tool_name, tool_input),
-            self._loop,
-        )
-        return future.result(timeout=30)
-
-    async def _handle_tool_call(
-        self, principal_id: str, tool_name: str, tool_input: dict
-    ) -> dict:
-        """Handle a tool call from an agent, enforce via Vincul."""
-        config = self.agent_configs[principal_id]
-        category = tool_input.get("category", "")
-        params = tool_input.get("params", {})
-        rationale = tool_input.get("rationale", "")
-
-        if tool_name == "send_message":
-            message = tool_input.get("message", "")
-            print(f"\n  [{config.agent_id}] 💬 {message}")
-            event = NegotiationEvent(
-                agent_id=config.agent_id,
-                event_type="message",
-                message=message,
-            )
-            self._emit_event(event)
-            payload = {"type": "message", "sender": config.agent_id, "message": message}
-            for peer_id in self.peers[principal_id].peer.registry.all_peers():
-                await self.peers[principal_id].peer.send(peer_id, payload)
-            return {"status": "sent", "message": "Message delivered to all parties"}
-
-        # propose_terms or accept_terms
-        namespace = f"terms.{category}"
-        action_type = "PROPOSE" if tool_name == "propose_terms" else "COMMIT"
-
-        # Block actions on already-agreed categories
-        if category in self._agreed:
-            msg = f"Category '{category}' is already agreed upon: {json.dumps(self._agreed[category])}. No further changes allowed."
-            print(f"\n  [{config.agent_id}] ⛔ {action_type} {category}: ALREADY AGREED")
-            event = NegotiationEvent(
-                agent_id=config.agent_id,
-                event_type="denial",
-                category=category,
-                params=params,
-                rationale=rationale,
-                failure_code="ALREADY_AGREED",
-                failure_message=msg,
-            )
-            self._emit_event(event)
-            return {"status": "denied", "failure_code": "ALREADY_AGREED", "message": msg}
-
-        scope = self._find_scope(principal_id, namespace, action_type)
-        if scope is None:
-            failure_msg = (
-                f"No authority to {action_type} on {namespace}. "
-                f"You may not have a scope for this namespace or action type."
-            )
-            print(f"\n  [{config.agent_id}] ❌ DENIED {action_type} {category}: NO SCOPE")
-            event = NegotiationEvent(
-                agent_id=config.agent_id,
-                event_type="denial",
-                category=category,
-                params=params,
-                rationale=rationale,
-                failure_code="NO_SCOPE",
-                failure_message=failure_msg,
-            )
-            self._emit_event(event)
-            return {"status": "denied", "failure_code": "NO_SCOPE", "message": failure_msg}
-
-        action = {
-            "type": action_type,
-            "namespace": namespace,
-            "resource": f"{category}-proposal",
-            "params": params,
-        }
-
-        peer = self.peers[principal_id]
-        receipt = peer.runtime.commit(
-            action=action,
-            scope_id=scope.id,
-            contract_id=self.contract.contract_id,
-            initiated_by=principal_id,
-        )
-
-        if receipt.outcome == "success":
-            label = "ACCEPTED" if action_type == "COMMIT" else "PROPOSED"
-            emoji = "✅" if action_type == "COMMIT" else "📋"
-            print(f"\n  [{config.agent_id}] {emoji} {label} {category}: {json.dumps(params)}")
-            print(f"    Rationale: {rationale}")
-            print(f"    Receipt: {receipt.receipt_hash[:32]}...")
-
-            event = NegotiationEvent(
-                agent_id=config.agent_id,
-                event_type="acceptance" if action_type == "COMMIT" else "proposal",
-                category=category,
-                params=params,
-                rationale=rationale,
-                receipt_hash=receipt.receipt_hash,
-            )
-            self._emit_event(event)
-
-            payload = {"type": "receipt", "receipt": receipt.to_dict()}
-            for peer_id in peer.peer.registry.all_peers():
-                await peer.peer.send(peer_id, payload)
-
-            result_msg = f"{action_type} on {category} accepted and broadcast to all parties"
-
-            if action_type == "COMMIT":
-                if category not in self._commits:
-                    self._commits[category] = {}
-                self._commits[category][principal_id] = params
-
-                required = self._commit_authorities.get(category, set())
-                if required and required.issubset(self._commits.get(category, {}).keys()):
-                    committed_values = list(self._commits[category].values())
-                    if all(v == committed_values[0] for v in committed_values[1:]):
-                        self._agreed[category] = committed_values[0]
-                        parties = [self.agent_configs[p].agent_id for p in required]
-                        print(f"\n  🤝 AGREED on {category}: {json.dumps(committed_values[0])}")
-                        print(f"     Parties: {', '.join(parties)}")
-                        self._emit_event(NegotiationEvent(
-                            agent_id="system",
-                            event_type="agreed",
-                            category=category,
-                            params=committed_values[0],
-                            message=f"All parties agreed on {category}! Terms locked.",
-                        ))
-                        result_msg += f". AGREED — all parties with authority have committed to the same terms on {category}. This category is now locked."
-                    else:
-                        other_commits = {
-                            self.agent_configs[pid].agent_id: p
-                            for pid, p in self._commits[category].items()
-                            if pid != principal_id
-                        }
-                        result_msg += f". Note: other commits on {category}: {json.dumps(other_commits)}. Terms don't match yet — category not agreed."
-
-            return {
-                "status": "success",
-                "action_type": action_type,
-                "receipt_hash": receipt.receipt_hash[:32],
-                "message": result_msg,
-            }
-        else:
-            failure_code = receipt.detail.get("error_code", "UNKNOWN")
-            failure_msg = receipt.detail.get("message", "Validation failed")
-            print(f"\n  [{config.agent_id}] ❌ DENIED {action_type} {category}: {failure_code}")
-            print(f"    {failure_msg}")
-            print(f"    Attempted: {json.dumps(params)}")
-
-            event = NegotiationEvent(
-                agent_id=config.agent_id,
-                event_type="denial",
-                category=category,
-                params=params,
-                rationale=rationale,
-                failure_code=failure_code,
-                failure_message=failure_msg,
-            )
-            self._emit_event(event)
-
-            return {
-                "status": "denied",
-                "failure_code": failure_code,
-                "message": failure_msg,
-                "hint": "Your proposed values violate your scope constraints. Try different values.",
-            }
-
-    def _find_scope(
-        self, principal_id: str, namespace: str, action_type: str
-    ) -> Scope | None:
-        op_type = OperationType(action_type)
-        for scope in self.scopes.get(principal_id, []):
-            if scope.domain.contains_namespace(namespace):
-                if op_type in scope.domain.types:
-                    return scope
-        return None
-
-    # ── Context building ──────────────────────────────────────
+    # ── Context building ───────────────────────────────────
 
     def _build_context(self, principal_id: str) -> str:
         parts = []
@@ -631,7 +566,7 @@ class NegotiationEngine:
         print(f"  [{config.agent_id}] 📨 Receipt from {sender_id}: {receipt.receipt_hash[:20]}...")
         self._emit_receipt(principal_id, sender_id, receipt.receipt_hash[:32])
 
-    # ── Summary ───────────────────────────────────────────────
+    # ── Summary ────────────────────────────────────────────
 
     def _print_summary(self) -> None:
         print(f"\n  Timeline: {len(self.timeline)} events")
@@ -659,37 +594,8 @@ class NegotiationEngine:
             for d in denials:
                 print(f"    {d.agent_id} -> {d.category}: {d.failure_code}")
 
-    # ── Cleanup ───────────────────────────────────────────────
+    # ── Cleanup ────────────────────────────────────────────
 
     async def cleanup(self) -> None:
         for peer in self.peers.values():
             await peer.stop()
-
-
-def _replicate_runtime(source: VinculRuntime) -> VinculRuntime:
-    """Create an independent runtime with identical state."""
-    replica = VinculRuntime()
-
-    for contract in source.contracts._contracts.values():
-        cloned = copy.deepcopy(contract)
-        replica.contracts._contracts[cloned.contract_id] = cloned
-
-    for scope in source.scopes._scopes.values():
-        cloned = copy.deepcopy(scope)
-        replica.scopes._scopes[cloned.id] = cloned
-        if cloned.issued_by_scope_id:
-            parent_id = cloned.issued_by_scope_id
-            if parent_id not in replica.scopes._children:
-                replica.scopes._children[parent_id] = []
-            replica.scopes._children[parent_id].append(cloned.id)
-
-    for receipt in source.receipts.timeline():
-        cloned = copy.deepcopy(receipt)
-        replica.receipts.append(cloned)
-
-    for key, value in source.budget._ceilings.items():
-        replica.budget._ceilings[key] = value
-    for key, value in source.budget._consumed.items():
-        replica.budget._consumed[key] = copy.deepcopy(value)
-
-    return replica

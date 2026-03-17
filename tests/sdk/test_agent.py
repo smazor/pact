@@ -1,20 +1,22 @@
 """
-tests/sdk/test_agent.py — @vincul_agent and @agent_action tests (unittest)
+tests/sdk/test_agent.py — @vincul_agent and @vincul_agent_action tests (unittest)
 """
 import unittest
 
 from vincul.identity import KeyPair
 from vincul.runtime import VinculRuntime
-from vincul.sdk.agent import agent_action, vincul_agent
+from vincul.sdk.agent import vincul_agent_action, vincul_agent
 from vincul.sdk.context import VinculContext
-from vincul.sdk.decorators import ToolResult, tool_operation, vincul_tool
+from vincul.sdk.decorators import ToolResult, vincul_tool_action, vincul_tool
 from vincul.types import OperationType, ReceiptKind
 
 
 # ── Fixtures ─────────────────────────────────────────────────
 
 NAMESPACE = "test.orders"
+SHIPPING_NAMESPACE = "test.shipping"
 TOOL_ID = "tool:Test:order-tool"
+SHIPPING_TOOL_ID = "tool:Test:shipping-tool"
 AGENT_ID = "agent:Test:buyer1"
 
 
@@ -24,24 +26,46 @@ class FakeTool:
         self.key_pair = key_pair
         self.runtime = runtime
 
-    @tool_operation(action_type=OperationType.COMMIT, resource_key="item_id")
+    @vincul_tool_action(action_type=OperationType.COMMIT, resource_key="item_id")
     def place_order(self, *, item_id: str, quantity: int) -> dict:
         return {"order_id": "ord-001", "total": quantity * 10}
 
-    @tool_operation(action_type=OperationType.COMMIT)
+    @vincul_tool_action(action_type=OperationType.COMMIT)
     def cancel_order(self, *, order_id: str) -> dict:
         return {"cancelled": order_id}
 
 
+@vincul_tool(namespace=SHIPPING_NAMESPACE, tool_id=SHIPPING_TOOL_ID)
+class FakeShippingTool:
+    def __init__(self, key_pair: KeyPair, runtime: VinculRuntime):
+        self.key_pair = key_pair
+        self.runtime = runtime
+
+    @vincul_tool_action(action_type=OperationType.COMMIT, resource_key="order_id")
+    def ship(self, *, order_id: str, address: str) -> dict:
+        return {"tracking_id": "trk-001", "order_id": order_id}
+
+
 @vincul_agent(agent_id=AGENT_ID)
 class FakeAgent:
-    @agent_action(operation="place_order")
+    @vincul_agent_action(operation="place_order")
     def buy(self, tool, *, item_id: str, quantity: int) -> ToolResult:
         """Buy through the tool."""
 
-    @agent_action
+    @vincul_agent_action
     def cancel_order(self, tool, *, order_id: str) -> ToolResult:
         """Cancel — operation defaults to method name."""
+
+
+@vincul_agent(agent_id="agent:Test:multi")
+class MultiScopeAgent:
+    @vincul_agent_action(operation="place_order")
+    def buy(self, tool, *, item_id: str, quantity: int) -> ToolResult:
+        """Buy through the order tool."""
+
+    @vincul_agent_action(operation="ship")
+    def ship(self, tool, *, order_id: str, address: str) -> ToolResult:
+        """Ship through the shipping tool."""
 
 
 @vincul_agent(agent_id="agent:Test:custom-init")
@@ -49,7 +73,7 @@ class AgentWithCustomInit:
     def __init__(self, *, label: str = "default"):
         self.label = label
 
-    @agent_action(operation="place_order")
+    @vincul_agent_action(operation="place_order")
     def buy(self, tool, *, item_id: str, quantity: int) -> ToolResult:
         """Buy through the tool."""
 
@@ -70,7 +94,7 @@ def _setup(leaf_ceiling="params.quantity <= 10"):
         ],
     )
     tool = FakeTool(key_pair=ctx.keypair("vendor:B"), runtime=ctx.runtime)
-    agent = FakeAgent(contract=contract, scope=scopes[2])
+    agent = FakeAgent(contract=contract, scopes=[scopes[2]])
     return ctx, contract, scopes, tool, agent
 
 
@@ -99,13 +123,13 @@ class TestVinculAgentDecorator(unittest.TestCase):
 
     def test_custom_init_preserved(self):
         ctx, contract, scopes, tool, _ = _setup()
-        agent = AgentWithCustomInit(contract=contract, scope=scopes[2], label="custom")
+        agent = AgentWithCustomInit(contract=contract, scopes=[scopes[2]], label="custom")
         self.assertEqual(agent.label, "custom")
         self.assertEqual(agent.agent_id, "agent:Test:custom-init")
 
     def test_custom_init_default_kwargs(self):
         ctx, contract, scopes, tool, _ = _setup()
-        agent = AgentWithCustomInit(contract=contract, scope=scopes[2])
+        agent = AgentWithCustomInit(contract=contract, scopes=[scopes[2]])
         self.assertEqual(agent.label, "default")
 
 
@@ -138,7 +162,7 @@ class TestAgentInvoke(unittest.TestCase):
         self.assertTrue(r2.success)
 
 
-# ── @agent_action — with explicit operation ──────────────────
+# ── @vincul_agent_action — with explicit operation ──────────────────
 
 class TestAgentActionExplicit(unittest.TestCase):
     def test_buy_routes_to_place_order(self):
@@ -164,7 +188,7 @@ class TestAgentActionExplicit(unittest.TestCase):
         self.assertEqual(meta["operation"], "place_order")
 
 
-# ── @agent_action — without parentheses (operation = method name) ──
+# ── @vincul_agent_action — without parentheses (operation = method name) ──
 
 class TestAgentActionImplicit(unittest.TestCase):
     def test_cancel_routes_to_cancel_order(self):
@@ -182,7 +206,7 @@ class TestAgentActionImplicit(unittest.TestCase):
 # ── Post-revocation ──────────────────────────────────────────
 
 class TestAgentPostRevocation(unittest.TestCase):
-    def test_agent_action_fails_after_revocation(self):
+    def test_vincul_agent_action_fails_after_revocation(self):
         ctx, contract, scopes, tool, agent = _setup()
         # Revoke mid scope, cascading to leaf
         ctx.revoke_scope(
@@ -224,6 +248,90 @@ class TestAgentToolIntegration(unittest.TestCase):
         agent.buy(tool, item_id="book-2", quantity=3)
         for r in ctx.receipts.timeline():
             self.assertTrue(r.verify_hash(), f"Receipt {r.receipt_id} failed verification")
+
+
+
+# ── Multi-scope resolution ────────────────────────────────────
+
+def _setup_multi_scope():
+    """Setup with two tools (orders + shipping) and an agent holding scopes for both."""
+    ctx = VinculContext()
+    ctx.add_principal("vendor:A", role="agent", permissions=["delegate", "commit"])
+    ctx.add_principal("vendor:B", role="tool", permissions=["delegate", "commit", "revoke"])
+    contract = ctx.create_contract(purpose_title="Test multi-scope")
+
+    order_scopes = ctx.create_scope_chain(
+        contract_id=contract.contract_id,
+        issued_by="vendor:B",
+        namespace=NAMESPACE,
+        chain=[
+            {"ceiling": "TOP"},
+            {"ceiling": "params.quantity <= 10", "delegate": False},
+        ],
+    )
+    shipping_scopes = ctx.create_scope_chain(
+        contract_id=contract.contract_id,
+        issued_by="vendor:B",
+        namespace=SHIPPING_NAMESPACE,
+        chain=[
+            {"ceiling": "TOP"},
+            {"ceiling": "TOP", "delegate": False},
+        ],
+    )
+
+    key_b = ctx.keypair("vendor:B")
+    order_tool = FakeTool(key_pair=key_b, runtime=ctx.runtime)
+    shipping_tool = FakeShippingTool(key_pair=key_b, runtime=ctx.runtime)
+
+    # Agent holds leaf scopes for both namespaces
+    agent = MultiScopeAgent(
+        contract=contract,
+        scopes=[order_scopes[-1], shipping_scopes[-1]],
+    )
+    return ctx, contract, order_tool, shipping_tool, agent, order_scopes, shipping_scopes
+
+
+class TestMultiScopeResolution(unittest.TestCase):
+    def test_invoke_resolves_order_scope(self):
+        ctx, contract, order_tool, shipping_tool, agent, order_scopes, shipping_scopes = _setup_multi_scope()
+        result = agent.buy(order_tool, item_id="book-1", quantity=2)
+        self.assertTrue(result.success)
+        self.assertEqual(result.receipt.scope_id, order_scopes[-1].id)
+
+    def test_invoke_resolves_shipping_scope(self):
+        ctx, contract, order_tool, shipping_tool, agent, order_scopes, shipping_scopes = _setup_multi_scope()
+        result = agent.ship(shipping_tool, order_id="ord-001", address="123 Main St")
+        self.assertTrue(result.success)
+        self.assertEqual(result.receipt.scope_id, shipping_scopes[-1].id)
+
+    def test_scopes_dont_cross(self):
+        """Order scope is used for order tool, shipping scope for shipping tool."""
+        ctx, contract, order_tool, shipping_tool, agent, order_scopes, shipping_scopes = _setup_multi_scope()
+        r1 = agent.buy(order_tool, item_id="book-1", quantity=2)
+        r2 = agent.ship(shipping_tool, order_id="ord-001", address="123 Main St")
+        self.assertNotEqual(r1.receipt.scope_id, r2.receipt.scope_id)
+
+    def test_order_ceiling_enforced(self):
+        """Order scope ceiling (quantity <= 10) is enforced even with multiple scopes."""
+        ctx, contract, order_tool, shipping_tool, agent, order_scopes, shipping_scopes = _setup_multi_scope()
+        result = agent.buy(order_tool, item_id="book-1", quantity=999)
+        self.assertFalse(result.success)
+
+    def test_find_scope(self):
+        ctx, contract, order_tool, shipping_tool, agent, order_scopes, shipping_scopes = _setup_multi_scope()
+        found = agent.find_scope(NAMESPACE, OperationType.COMMIT.value)
+        self.assertEqual(found.id, order_scopes[-1].id)
+        found = agent.find_scope(SHIPPING_NAMESPACE, OperationType.COMMIT.value)
+        self.assertEqual(found.id, shipping_scopes[-1].id)
+
+    def test_find_scope_no_match(self):
+        ctx, contract, order_tool, shipping_tool, agent, order_scopes, shipping_scopes = _setup_multi_scope()
+        found = agent.find_scope("nonexistent.namespace", OperationType.COMMIT.value)
+        self.assertIsNone(found)
+
+    def test_scope_property_returns_first(self):
+        ctx, contract, order_tool, shipping_tool, agent, order_scopes, shipping_scopes = _setup_multi_scope()
+        self.assertIs(agent.scope, order_scopes[-1])
 
 
 if __name__ == "__main__":

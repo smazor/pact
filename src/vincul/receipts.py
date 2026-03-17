@@ -94,7 +94,16 @@ class Receipt:
         return vincul_hash("receipt", self._payload_for_hash())
 
     def seal(self) -> "Receipt":
-        """Compute and set receipt_hash. Returns self for chaining."""
+        """Compute and set receipt_hash. Raises if already sealed.
+
+        Not thread-safe: the check-then-set is not atomic. Concurrent
+        callers could both pass the guard. This is acceptable because
+        seal() is deterministic (same fields → same hash) and Vincul
+        stores have no thread-safety guarantees. Callers needing
+        concurrency must synchronize externally.
+        """
+        if self.receipt_hash is not None:
+            raise RuntimeError("Receipt already sealed")
         object.__setattr__(self, "receipt_hash", self.compute_hash())
         return self
 
@@ -445,6 +454,40 @@ def ledger_snapshot_receipt(
         },
         prior_receipt = prior_receipt,
     )
+
+
+def activation_receipt(
+    *,
+    initiated_by: str,
+    contract_id: UUID,
+    contract_hash: Hash,
+    activated_at: Timestamp,
+    decision_rule: str,
+    signatures_present: int,
+    signatories: list[str],
+    description: str = "",
+) -> Receipt:
+    return _base(
+        kind          = ReceiptKind.CONTRACT_ACTIVATION,
+        action        = "activate_contract",
+        description   = description or "Coalition contract activated",
+        initiated_by  = initiated_by,
+        scope_id      = None,
+        scope_hash    = None,
+        contract_id   = contract_id,
+        contract_hash = contract_hash,
+        signatories   = signatories,
+        outcome       = "success",
+        detail        = {
+            "contract_id":          contract_id,
+            "contract_hash":        contract_hash,
+            "activated_at":         activated_at,
+            "activated_by":         initiated_by,
+            "decision_rule":        decision_rule,
+            "signatures_present":   signatures_present,
+        },
+    )
+
 
 
 def dissolution_receipt(

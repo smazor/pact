@@ -1,4 +1,4 @@
-"""vincul.sdk.decorators — @vincul_tool and @tool_operation decorators.
+"""vincul.sdk.decorators — @vincul_tool and @vincul_tool_action decorators.
 
 Wraps tool classes and their operation methods so that all vincul
 initialization, validation pipeline, receipt handling, and attestation
@@ -8,7 +8,7 @@ are handled automatically. Tool authors write only business logic.
 from __future__ import annotations
 
 import functools
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
 from typing import Any
 
 from vincul.hashing import vincul_hash
@@ -21,12 +21,55 @@ from vincul.types import OperationType, ReceiptKind
 
 @dataclass
 class ToolResult:
-    """Unified return type from a @tool_operation decorated method."""
+    """Unified return type from vincul tool operations.
+
+    Auto-attests when ``tool_id`` and ``signer`` are provided.  The attested
+    result is built internally using the receipt's authority hashes — callers
+    never need to call ``_build_attested_result`` directly.
+
+    Usage::
+
+        result = ToolResult(
+            success=True,
+            receipt=receipt,
+            payload={"order_id": "ord-001"},
+            tool_id="agentic_demo:propose_terms",
+            signer=keypair,
+        )
+        assert result.attested_result is not None  # auto-built
+    """
 
     success: bool
     receipt: Receipt
     payload: dict[str, Any] | None = None
-    attested_result: dict[str, Any] | None = None
+    attested_result: dict[str, Any] | None = field(default=None, init=False)
+
+    # InitVar — consumed by __post_init__, not stored as fields
+    tool_id: InitVar[str | None] = None
+    tool_version: InitVar[str] = "0.1.0"
+    signer: InitVar[KeyPair | None] = None
+    external_ref: InitVar[str] = ""
+
+    def __post_init__(self, tool_id, tool_version, signer, external_ref):
+        if tool_id is not None and signer is not None:
+            if self.success:
+                result_payload = self.payload or {}
+            else:
+                result_payload = {
+                    "failure_code": self.receipt.detail.get("error_code", "UNKNOWN"),
+                    "message": self.receipt.detail.get("message", ""),
+                }
+            self.attested_result = _build_attested_result(
+                tool_id=tool_id,
+                tool_version=tool_version,
+                contract_hash=self.receipt.contract_hash or "",
+                scope_hash=self.receipt.scope_hash or "",
+                receipt_hash=self.receipt.receipt_hash,
+                status="success" if self.success else "failure",
+                result_payload=result_payload,
+                external_ref=external_ref,
+                signer=signer,
+            )
 
     @property
     def failure_code(self) -> str | None:
@@ -103,7 +146,7 @@ def vincul_tool(
                 self.key_pair = key_pair
                 self.runtime = runtime
 
-            @tool_operation(action_type=OperationType.COMMIT, resource_key="item_id")
+            @vincul_tool_action(action_type=OperationType.COMMIT, resource_key="item_id")
             def place_order(self, *, item_id, quantity, shipping_zip):
                 return {"order_id": "ord-001", "charged": quantity * 12.34}
     """
@@ -118,7 +161,7 @@ def vincul_tool(
         @functools.wraps(orig_init)
         def wrapped_init(self, *args, **kwargs):
             orig_init(self, *args, **kwargs)
-            # Collect @tool_operation methods and build manifest
+            # Collect @vincul_tool_action methods and build manifest
             ops = []
             for name in dir(type(self)):
                 attr = getattr(type(self), name, None)
@@ -153,9 +196,9 @@ def vincul_tool(
     return decorator
 
 
-# ── @tool_operation method decorator ──────────────────────────
+# ── @vincul_tool_action method decorator ──────────────────────────
 
-def tool_operation(
+def vincul_tool_action(
     *,
     action_type: OperationType = OperationType.COMMIT,
     resource_key: str | None = None,
@@ -176,7 +219,7 @@ def tool_operation(
 
     Example::
 
-        @tool_operation(action_type=OperationType.COMMIT, resource_key="item_id")
+        @vincul_tool_action(action_type=OperationType.COMMIT, resource_key="item_id")
         def place_order(self, *, item_id: str, quantity: int) -> dict:
             return {"order_id": "ord-001"}
 
@@ -228,27 +271,13 @@ def tool_operation(
                 budget_amounts=budget_amounts,
             )
 
-            scope = self.runtime.scopes.get(scope_id)
-            contract = self.runtime.contracts.get(contract_id)
-
             if receipt.receipt_kind == ReceiptKind.FAILURE:
-                attested = _build_attested_result(
-                    tool_id=self._vincul_tool_id,
-                    tool_version=self._vincul_tool_version,
-                    contract_hash=contract.descriptor_hash if contract else "",
-                    scope_hash=scope.descriptor_hash if scope else "",
-                    receipt_hash=receipt.receipt_hash,
-                    status="failure",
-                    result_payload={
-                        "failure_code": receipt.detail.get("error_code", "UNKNOWN"),
-                        "message": receipt.detail.get("message", ""),
-                    },
-                    signer=self.key_pair,
-                )
                 return ToolResult(
                     success=False,
                     receipt=receipt,
-                    attested_result=attested,
+                    tool_id=self._vincul_tool_id,
+                    tool_version=self._vincul_tool_version,
+                    signer=self.key_pair,
                 )
 
             # Call business logic
@@ -262,23 +291,14 @@ def tool_operation(
                         external_ref = str(result_payload[key])
                         break
 
-            attested = _build_attested_result(
-                tool_id=self._vincul_tool_id,
-                tool_version=self._vincul_tool_version,
-                contract_hash=contract.descriptor_hash,
-                scope_hash=scope.descriptor_hash,
-                receipt_hash=receipt.receipt_hash,
-                status="success",
-                result_payload=result_payload,
-                external_ref=external_ref,
-                signer=self.key_pair,
-            )
-
             return ToolResult(
                 success=True,
                 receipt=receipt,
                 payload=result_payload,
-                attested_result=attested,
+                tool_id=self._vincul_tool_id,
+                tool_version=self._vincul_tool_version,
+                signer=self.key_pair,
+                external_ref=external_ref,
             )
 
         return wrapper
